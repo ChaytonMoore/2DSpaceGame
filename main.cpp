@@ -10,6 +10,9 @@
 #include "Graphical.h"
 #include "System.h"
 #include "PlanetUIElement.h"
+#include "SystemUIElement.h"
+
+
 
 //#include "Faction.h"
 
@@ -17,13 +20,20 @@ sf::Vector2i CameraLocation = sf::Vector2i(0,0);
 
 System* CurrentSystem;
 Planet* CurrentPlanet;
+FleetStruct* CurrentFleet;
+
 
 double GlobalTime = 0;
 
 
 //Factions 
 
+enum SelectEnum
+{
+	Basic, Fleet
+};
 
+SelectEnum CurrentSelect = SelectEnum::Basic;
 
 
 void Faction::LoadShips()
@@ -71,24 +81,28 @@ void Faction::LoadShips()
 std::vector<ShipType*> GetBuildableShips(Faction* PlayerFaction)
 {
 	std::vector<ShipType*> output;
-	//first check if the system is the same as the player faction
-	if (PlayerFaction == CurrentSystem->OwningFaction)
+	if (CurrentSystem)
 	{
-		bool valid;
-		for (size_t i = 0; i < PlayerFaction->FactionShips.size(); i++)
+
+
+		//first check if the system is the same as the player faction
+		if (PlayerFaction == CurrentSystem->OwningFaction)
 		{
-
-			valid = CurrentSystem->SimpleMetal > PlayerFaction->FactionShips.at(i)->RequiredMetal   &&   CurrentSystem->Titanium > PlayerFaction->FactionShips.at(i)->RequiredTitanium   &&   CurrentSystem->RareMetal > PlayerFaction->FactionShips.at(i)->RequiredRare;
-			valid = valid && PlayerFaction->EngineTech >= PlayerFaction->FactionShips.at(i)->EngineTech && PlayerFaction->ShipbuildingTech >= PlayerFaction->FactionShips.at(i)->ShipTech && PlayerFaction->ShieldTech >= PlayerFaction->FactionShips.at(i)->ShieldTech && PlayerFaction->SensorTech >= PlayerFaction->FactionShips.at(i)->Sensortech && PlayerFaction->WeaponsTech >= PlayerFaction->FactionShips.at(i)->WeaponTech;
-
-			if (valid)
+			bool valid;
+			for (size_t i = 0; i < PlayerFaction->FactionShips.size(); i++)
 			{
-				output.push_back(PlayerFaction->FactionShips.at(i));
+
+				valid = CurrentSystem->SimpleMetal > PlayerFaction->FactionShips.at(i)->RequiredMetal && CurrentSystem->Titanium > PlayerFaction->FactionShips.at(i)->RequiredTitanium && CurrentSystem->RareMetal > PlayerFaction->FactionShips.at(i)->RequiredRare;
+				valid = valid && PlayerFaction->EngineTech >= PlayerFaction->FactionShips.at(i)->EngineTech && PlayerFaction->ShipbuildingTech >= PlayerFaction->FactionShips.at(i)->ShipTech && PlayerFaction->ShieldTech >= PlayerFaction->FactionShips.at(i)->ShieldTech && PlayerFaction->SensorTech >= PlayerFaction->FactionShips.at(i)->Sensortech && PlayerFaction->WeaponsTech >= PlayerFaction->FactionShips.at(i)->WeaponTech;
+
+				if (valid)
+				{
+					output.push_back(PlayerFaction->FactionShips.at(i));
+				}
 			}
 		}
+
 	}
-
-
 	return output;
 }
 
@@ -114,7 +128,7 @@ int FindMostPopulated()
 
 
 
-void ClickHandle(std::vector<UIElement*> Potentials)
+void ClickHandle(std::vector<UIElement*> Potentials, PlanetUIElement* PlanetUI)
 {
 	sf::Vector2i MouseLoc = sf::Mouse::getPosition();
 
@@ -140,6 +154,13 @@ void ClickHandle(std::vector<UIElement*> Potentials)
 					CurrentPlanet = CurrentSystem->Planets.at(0);
 				}
 				((System*)(Potentials.at(i)))->ClickedOn();
+
+				if (CurrentSelect == SelectEnum::Fleet)
+				{
+					CurrentFleet->TargetSystem = (System*)(Potentials.at(i));
+					CurrentSelect == SelectEnum::Basic;
+				}
+
 			}
 		}
 		else if (dynamic_cast<Planet*>(Potentials.at(i)) != nullptr)
@@ -152,7 +173,7 @@ void ClickHandle(std::vector<UIElement*> Potentials)
 		}
 		else if(dynamic_cast<ShipBuildButton*>(Potentials.at(i)) != nullptr)
 		{
-			if (dynamic_cast<ShipBuildButton*>(Potentials.at(i))->IsClicked(MouseLoc))
+			if (dynamic_cast<ShipBuildButton*>(Potentials.at(i))->IsClicked(MouseLoc,PlanetUI->CurrentScroll))
 			{
 				
 				dynamic_cast<ShipBuildButton*>(Potentials.at(i))->ClickedOn();
@@ -243,6 +264,12 @@ void PlayerFactionStart(Faction* PlayerFaction, std::vector<System*> systems)
 
 int main()
 {
+	//The very first thing is to load the generic textures.
+	
+	TextureStore* TStore = new TextureStore;
+	TStore->MassLoadTextures();
+
+
 	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Game");
 	sf::Sprite Background;
 	LoadImage(&Background, "Background.png");
@@ -252,7 +279,7 @@ int main()
 	//Create the factions
 
 
-	Faction* PlayerFaction = new Faction;
+	Faction* PlayerFaction = new Faction("Human");
 	PlayerFaction->LoadShips();
 
 	
@@ -269,6 +296,9 @@ int main()
 		UIAspects.push_back(Systems.at(i));
 	}
 
+
+	//Fleets declaration
+	std::vector<FleetStruct*> FreeFleets;
 
 	//Sol->AddUIPlanets(&UIAspects);
 	
@@ -295,6 +325,9 @@ int main()
 	PlanetUIElement* PlanetUI = new PlanetUIElement;
 	PlanetUI->SetUpPlanetUI();
 
+	SystemUIElement* SystemUI = new SystemUIElement;
+	
+
 
 
 
@@ -307,6 +340,9 @@ int main()
 	ClockFont.loadFromFile("C:/Users/User/Documents/2DSpaceGame/Assets/Protector.ttf");
 	GlobalClock.setFont(ClockFont);
 	GlobalClock.setCharacterSize(24);
+
+
+	FleetStruct* TempFleet;
 
 	int adddd = 0;
 	while (window.isOpen())
@@ -354,20 +390,23 @@ int main()
 						
 						//later make it so it validates what types of ship can be built
 						
-						
-						for (size_t i = 0; i < GetBuildableShips(PlayerFaction).size(); i++)
+
+						//TODO : crashes if there is no selected system
+						if (CurrentSystem)
 						{
-							PlanetUI->BuildableShips.push_back(new ShipBuildButton(sf::Vector2i(30, 200), GetBuildableShips(PlayerFaction).at(i)->Name, GetBuildableShips(PlayerFaction).at(i)));
+							for (size_t i = 0; i < GetBuildableShips(PlayerFaction).size(); i++)
+							{
+								PlanetUI->BuildableShips.push_back(new ShipBuildButton(sf::Vector2i(30, 200), GetBuildableShips(PlayerFaction).at(i)->Name, GetBuildableShips(PlayerFaction).at(i)));
+							}
+
+							//^Might be a memory leak
+
+							for (size_t i = 0; i < PlanetUI->BuildableShips.size(); i++)
+							{
+								UIAspects.push_back(PlanetUI->BuildableShips.at(i));
+							}
+
 						}
-
-						//^Might be a memory leak
-						
-						for (size_t i = 0; i < PlanetUI->BuildableShips.size(); i++)
-						{
-							UIAspects.push_back(PlanetUI->BuildableShips.at(i));
-						}
-
-
 						CurrentSystem->AddUIPlanets(&UIAspects);
 						
 					}
@@ -387,7 +426,7 @@ int main()
 			{
 				if (event.key.code == sf::Mouse::Left)
 				{
-					ClickHandle(UIAspects);
+					ClickHandle(UIAspects,PlanetUI);
 				}
 
 				
@@ -408,7 +447,8 @@ int main()
 		//Sol->RenderSystem(&window,CameraLocation);
 		for (size_t i = 0; i < Systems.size(); i++)
 		{
-			Systems.at(i)->RenderSystem(&window, CameraLocation);
+			Systems.at(i)->RenderSystem(&window, CameraLocation, TStore);
+			Systems.at(i)->EventTick(DeltaTime);
 		}
 
 
@@ -420,6 +460,13 @@ int main()
 
 
 			RenderShipQueue(&window);
+			TempFleet = SystemUI->RenderSystemUI(&window,CurrentSystem);
+			if (TempFleet)
+			{
+				CurrentFleet = TempFleet;
+				CurrentSelect = SelectEnum::Fleet;
+			}
+			
 			
 		}
 

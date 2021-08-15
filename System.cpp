@@ -24,8 +24,10 @@ std::vector<std::string> System::SplitString(std::string s, char delimiter)
 
 
 
-void System::RenderSystem(sf::RenderWindow* window, sf::Vector2i CameraOffset)
+void System::RenderSystem(sf::RenderWindow* window, sf::Vector2i CameraOffset, TextureStore* TStore)
 {
+	//Still a minor memory leak TODO, might just be more things created
+	//TODO renders mulitple ships building over each other
 
 	LocalPosition = Location - CameraOffset;
 	Sprite.setPosition(sf::Vector2f(LocalPosition));
@@ -33,6 +35,41 @@ void System::RenderSystem(sf::RenderWindow* window, sf::Vector2i CameraOffset)
 	SystemName.setPosition(sf::Vector2f(LocalPosition)+sf::Vector2f(32,64));
 	window->draw(SystemName);
 
+	bool inside;
+	std::vector<std::string> existingEmblems;
+	for (size_t i = 0; i < SystemShips.size(); i++)
+	{
+		inside = false;
+		for (size_t j = 0; j < existingEmblems.size(); j++)
+		{
+			if (existingEmblems.at(j)==SystemShips.at(i)->OwningFaction->FactionName)
+			{
+				inside = true;
+				
+			}
+
+		}
+		if (!inside)
+		{
+			existingEmblems.push_back(SystemShips.at(i)->OwningFaction->FactionName);
+			FleetsEmblems.push_back(new sf::Sprite);
+			FleetsEmblems.back()->setPosition(sf::Vector2f(LocalPosition) + sf::Vector2f(32, -32));
+
+			if (SystemShips.at(i)->OwningFaction->FactionName == "Human")
+			{
+				
+				FleetsEmblems.back()->setTexture(*TStore->HumanEmblemT);
+			}
+		}
+
+	}
+
+	for (size_t i = 0; i < FleetsEmblems.size(); i++)
+	{
+		window->draw(*FleetsEmblems.at(i));
+	}
+
+	while (!FleetsEmblems.empty()) delete FleetsEmblems.front(), FleetsEmblems.pop_back();
 	
 
 }
@@ -132,6 +169,7 @@ bool System::LoadSystem(std::string Name)
 			temp->Population = std::stof(split[2]);
 			temp->ArableLand = std::stoi(split[3]);
 
+			//TODO : perhaps make it so that other things than human can start of as player faction
 			
 
 		}
@@ -141,4 +179,58 @@ bool System::LoadSystem(std::string Name)
 
 
 	return true;
+}
+
+
+
+
+std::vector<System*> LoadSystems(Faction* PlayerFaction)
+{
+
+	std::vector<System*> output;
+	//firstly load the address document
+	std::string Line;
+	std::ifstream File("C:/Users/User/Documents/2DSpaceGame/Assets/Systems.txt");
+	std::vector<std::string> split;
+
+
+	while (std::getline(File, Line))
+	{
+		split = System::SplitString(Line,',');
+		output.push_back(new System(sf::Vector2i(std::stoi(split.at(1)),std::stoi(split.at(2))),split.at(0)));
+		output.back()->LoadSystem(split.at(0));
+		//output.back()->AddUIPlanets();
+		if (split.at(3)=="Human")
+		{
+			output.back()->OwningFaction = PlayerFaction;
+		}
+		//TODO ^ Make it so that other factions than humans can start with a system
+
+
+
+	}
+
+
+	return output;
+}
+
+
+
+void System::EventTick(double DeltaTime, std::vector<FleetStruct*> FreeFleets)
+{
+	for (size_t i = 0; i < ShipBuildQueue.size(); i++)
+	{
+		ShipBuildQueue.at(i).Remaining -= DeltaTime/100;
+		if (ShipBuildQueue.at(i).Remaining<0)
+		{
+			SystemShips.push_back(new ShipInstance(ShipBuildQueue.at(i).Type,OwningFaction));
+			ShipBuildQueue.erase(ShipBuildQueue.begin()+i);
+			
+		}
+	}
+
+	//Now handle the fleets in the system
+	
+
+
 }

@@ -6,11 +6,14 @@
 #include <fstream>
 #include <string>
 #include <chrono>
+#include <stdlib.h> 
+#include <stdio.h>  
 
 #include "Graphical.h"
 #include "System.h"
 #include "PlanetUIElement.h"
 #include "SystemUIElement.h"
+#include "DetailsPanel.h"
 
 
 
@@ -21,6 +24,10 @@ sf::Vector2i CameraLocation = sf::Vector2i(0,0);
 System* CurrentSystem;
 Planet* CurrentPlanet;
 FleetStruct* CurrentFleet;
+std::vector<FleetStruct*> FreeFleets;
+
+//Probably best to move the variable below out of global
+sf::Sprite PlanetFocus;
 
 
 double GlobalTime = 0;
@@ -28,12 +35,11 @@ double GlobalTime = 0;
 
 //Factions 
 
-enum SelectEnum
-{
-	Basic, Fleet
-};
+
 
 SelectEnum CurrentSelect = SelectEnum::Basic;
+DetailsPanel* CentralPanel;
+
 
 
 void Faction::LoadShips()
@@ -68,8 +74,20 @@ void Faction::LoadShips()
 			FactionShips.back()->Sensortech = std::stoi(split.at(11));
 
 			col = split.at(12);
+			for (size_t i = 0; i < col.size(); i++)
+			{
+				FactionShips.back()->Colonisable.push_back(ShipType::FromChar(col.at(i)));
+				std::cout << FactionShips.back()->Name << " " << FactionShips.back()->Colonisable.back() << std::endl;
+			}
+
 			FactionShips.back()->Crew = std::stoi(split.at(13));
 			FactionShips.back()->ConstructTime = std::stof(split.at(14));
+			col = split.at(15);
+			for (size_t i = 0; i < col.size(); i++)
+			{
+				FactionShips.back()->Terraformable.push_back(ShipType::FromChar(col.at(i)));
+
+			}
 			
 		}
 		
@@ -109,15 +127,15 @@ std::vector<ShipType*> GetBuildableShips(Faction* PlayerFaction)
 //*****End of Factions*******
 
 
-int FindMostPopulated()
+int FindMostPopulated(System* sys)
 {
 	int pop = 0;
 	int current = 0;
-	for (size_t i = 0; i < CurrentSystem->Planets.size(); i++)
+	for (size_t i = 0; i < sys->Planets.size(); i++)
 	{
-		if (CurrentSystem->Planets.at(0)->Population>pop)
+		if (sys->Planets.at(i)->Population>pop)
 		{
-			pop = CurrentSystem->Planets.at(0)->Population;
+			pop = sys->Planets.at(i)->Population;
 			current = i;
 		}
 	}
@@ -139,48 +157,78 @@ void ClickHandle(std::vector<UIElement*> Potentials, PlanetUIElement* PlanetUI)
 			
 
 		//re arrange the if statements
-
-		if (dynamic_cast<System*>(Potentials.at(i)) != nullptr)
+		if (Potentials.at(i) != nullptr)
 		{
 
-			if (dynamic_cast<System*>(Potentials.at(i))->IsClicked(MouseLoc))
+			std::cout << i;
+			if (dynamic_cast<System*>(Potentials.at(i)) != nullptr)
 			{
 
-
-
-				CurrentSystem = ((System*)(Potentials.at(i)));
-				if (CurrentSystem->Planets.size() > 0)
+				if (dynamic_cast<System*>(Potentials.at(i))->IsClicked(MouseLoc))
 				{
-					CurrentPlanet = CurrentSystem->Planets.at(0);
-				}
-				((System*)(Potentials.at(i)))->ClickedOn();
 
-				if (CurrentSelect == SelectEnum::Fleet)
+					if (CurrentSelect == SelectEnum::Fleet && CurrentFleet != nullptr)
+					{
+
+						if ((System*)(Potentials.at(i)) == CurrentFleet->CurrentSystem)
+						{
+							delete CurrentFleet;
+							CurrentSelect = SelectEnum::Basic;
+						}
+						else
+						{
+
+							CurrentFleet->TargetSystem = (System*)(Potentials.at(i));
+							CurrentSelect = SelectEnum::Basic;
+							std::cout << "Basic" << std::endl;
+
+							for (size_t j = 0; j < CurrentFleet->Ships.size(); j++)
+							{
+								std::cout <<" "<<CurrentFleet->Ships.size() <<"s"<< std::endl;
+
+								if (CurrentFleet->Ships.at(j)) //TODO just leaving the ships in might cause a memory leak
+								{
+									CurrentSystem->RemoveShipInstance(CurrentFleet->Ships.at(j));
+								}
+							}
+							FreeFleets.push_back(CurrentFleet);
+							CurrentFleet = nullptr;
+						}
+					}
+
+
+
+					CurrentSystem = ((System*)(Potentials.at(i)));
+					if (CurrentSystem->Planets.size() > 0)
+					{
+						CurrentPlanet = CurrentSystem->Planets.at(FindMostPopulated(CurrentSystem));
+					}
+					((System*)(Potentials.at(i)))->ClickedOn();
+
+
+
+					//move up
+				}
+			}
+			else if (dynamic_cast<Planet*>(Potentials.at(i)) != nullptr)
+			{
+				if (dynamic_cast<Planet*>(Potentials.at(i))->IsClicked(MouseLoc))
 				{
-					CurrentFleet->TargetSystem = (System*)(Potentials.at(i));
-					CurrentSelect == SelectEnum::Basic;
+
+					CurrentPlanet = ((Planet*)(Potentials.at(i)));
 				}
-
 			}
-		}
-		else if (dynamic_cast<Planet*>(Potentials.at(i)) != nullptr)
-		{
-			if (dynamic_cast<Planet*>(Potentials.at(i))->IsClicked(MouseLoc))
+			else if (dynamic_cast<ShipBuildButton*>(Potentials.at(i)) != nullptr)
 			{
+				if (dynamic_cast<ShipBuildButton*>(Potentials.at(i))->IsClicked(MouseLoc, PlanetUI->CurrentScroll))
+				{
 
-				CurrentPlanet = ((Planet*)(Potentials.at(i)));
+					dynamic_cast<ShipBuildButton*>(Potentials.at(i))->ClickedOn();
+
+				}
 			}
 		}
-		else if(dynamic_cast<ShipBuildButton*>(Potentials.at(i)) != nullptr)
-		{
-			if (dynamic_cast<ShipBuildButton*>(Potentials.at(i))->IsClicked(MouseLoc,PlanetUI->CurrentScroll))
-			{
-				
-				dynamic_cast<ShipBuildButton*>(Potentials.at(i))->ClickedOn();
-				
-			}
-		}
-
+		
 
 			
 
@@ -199,6 +247,13 @@ void RenderPlanets(sf::RenderWindow* window,System* system)
 	for (size_t i = 0; i < system->Planets.size(); i++)
 	{
 		window->draw(*system->Planets.at(i)->PlanetSprite);
+		if (system->Planets.at(i) == CurrentPlanet)
+		{
+			//Render the focus graphic
+			PlanetFocus.setPosition(system->Planets.at(i)->PlanetSprite->getPosition());
+			PlanetFocus.setScale(system->Planets.at(i)->PlanetSprite->getScale());
+			window->draw(PlanetFocus);
+		}
 		
 	}
 
@@ -209,6 +264,8 @@ void RenderShipQueue(sf::RenderWindow* window)
 {
 	for (size_t i = 0; i < CurrentSystem->ShipBuildQueue.size(); i++)
 	{
+		CurrentSystem->ShipBuildQueue.at(i).UIElement->rect.setPosition(sf::Vector2f(240,150 + i*50));
+		CurrentSystem->ShipBuildQueue.at(i).UIElement->Text.setPosition(sf::Vector2f(240, 150 + i * 50));
 		window->draw(CurrentSystem->ShipBuildQueue.at(i).UIElement->rect);
 		CurrentSystem->ShipBuildQueue.at(i).UIElement->Text.setString(CurrentSystem->ShipBuildQueue.at(i).Type->Name+ std::to_string(CurrentSystem->ShipBuildQueue.at(i).Remaining));
 		window->draw(CurrentSystem->ShipBuildQueue.at(i).UIElement->Text);
@@ -258,19 +315,137 @@ void PlayerFactionStart(Faction* PlayerFaction, std::vector<System*> systems)
 			systems.at(i)->RareMetal = 100;
 		}
 	}
+	
 }
 
+void LoadFactionData(Faction* Faction, std::vector<System*>* Systems)
+{
+	std::ifstream File("C:/Users/User/Documents/2DSpaceGame/Assets/Profiles/" + Faction->FactionName + ".txt");
+	std::vector<std::string> split;
+	std::string a;
+	File >> a;
+	split = System::SplitString(a,',');
+
+	int pop;
+
+
+	for (size_t i = 0; i < Systems->size(); i++)
+	{
+		Systems->at(i)->SimpleMetal = std::stoi(split.at(0));
+		Systems->at(i)->Titanium = std::stoi(split.at(1));
+		Systems->at(i)->RareMetal = std::stoi(split.at(2));
+
+		if (Systems->at(i)->OwningFaction == Faction)
+		{
+			//Now find the most populated planet
+			pop = FindMostPopulated(Systems->at(i));
+			Systems->at(i)->Planets.at(pop)->Medical = MedicalLevels(std::stoi(split.at(3)));
+			Systems->at(i)->Planets.at(pop)->Mining = MiningLevels(std::stoi(split.at(4)));
+			Systems->at(i)->Planets.at(pop)->Shipyard = ShipyardLevels(std::stoi(split.at(5)));
+			Systems->at(i)->Planets.at(pop)->Lab = ScienceLevels(std::stoi(split.at(6)));
+
+		}
+		
+	}
+	
+	Faction->MedicalCoef = std::stof(split.at(7));
+	Faction->MiningCoef = std::stof(split.at(8));
+	Faction->Farmingcoef = std::stof(split.at(9));
+
+	Faction->ConstructionCoef = std::stof(split.at(10));
+	Faction->ShipBuildingCoef = std::stof(split.at(11));
+	Faction->WeaponsCoef = std::stof(split.at(12));
+
+	Faction->ShieldCoef = std::stof(split.at(13));
+	Faction->EngineCoef = std::stof(split.at(14));
+	Faction->SensorCoef = std::stof(split.at(15));
+
+
+}
+
+void TechnologyTick(double DeltaTime,std::vector<Faction*> Factions, std::vector<System*> Systems)
+{
+	//Should only happen once a year
+
+	//For each faction we'll just the same variables
+	int TotalResearch;
+	srand(time(NULL));
+
+	for (size_t i = 0; i < Factions.size(); i++)
+	{
+		TotalResearch = 0;
+		for (size_t j = 0; j < Systems.size(); j++)
+		{
+			if (Systems.at(j)->OwningFaction == Factions.at(i))
+			{
+				for (size_t n = 0; n < Systems.at(j)->Planets.size(); n++)
+				{
+					//The research level is proportional to the lab level squared to put priority on the larger systems
+					TotalResearch += pow((int)Systems.at(j)->Planets.at(n)->Lab, 2); 
+
+
+
+				}
+			}
+		}
+
+		//Each of the techs have its own value 
+		if (TotalResearch*Factions.at(i)->MedicalCoef > Factions.at(i)->MedicalTech * 50) //Might want to increase this at a different rate perhaps by a power of 2.
+		{
+			//If the tech is higher it'll just advance the tech
+			Factions.at(i)->MedicalTech++;
+		}
+		else
+		{
+			//Random chance it is advanced
+			if (TotalResearch * Factions.at(i)->MedicalCoef > rand()% Factions.at(i)->MedicalTech * 50)
+			{
+				Factions.at(i)->MedicalTech++;
+			}
+		}
+
+		
+		if (TotalResearch * Factions.at(i)->MiningCoef > Factions.at(i)->MiningTech * 50) //Might want to increase this at a different rate perhaps by a power of 2.
+		{
+			//If the tech is higher it'll just advance the tech
+			Factions.at(i)->MiningTech++;
+		}
+		else
+		{
+			//Random chance it is advanced
+			if (TotalResearch * Factions.at(i)->MiningCoef > rand() % Factions.at(i)->MiningTech * 50)
+			{
+				Factions.at(i)->MiningTech++;
+			}
+		}
+
+
+	}
+
+	
+
+
+}
 
 
 int main()
 {
+	
+	
+	CentralPanel = new DetailsPanel;
+
 	//The very first thing is to load the generic textures.
 	
 	TextureStore* TStore = new TextureStore;
 	TStore->MassLoadTextures();
 
+	
 
-	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Game");
+	//Load the planet focus texture
+	LoadImage(&PlanetFocus,"PlanetSelect.png");
+
+
+	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Game", sf::Style::Fullscreen);
 	sf::Sprite Background;
 	LoadImage(&Background, "Background.png");
 	
@@ -281,6 +456,9 @@ int main()
 
 	Faction* PlayerFaction = new Faction("Human");
 	PlayerFaction->LoadShips();
+
+	std::vector<Faction*> Factions;
+	Factions.push_back(PlayerFaction);
 
 	
 	//System* Sol = new System(sf::Vector2i(960,540),"Sol");
@@ -298,7 +476,7 @@ int main()
 
 
 	//Fleets declaration
-	std::vector<FleetStruct*> FreeFleets;
+	
 
 	//Sol->AddUIPlanets(&UIAspects);
 	
@@ -326,7 +504,7 @@ int main()
 	PlanetUI->SetUpPlanetUI();
 
 	SystemUIElement* SystemUI = new SystemUIElement;
-	
+	ShipActionsUI* ActionsUIShip = new ShipActionsUI();
 
 
 
@@ -340,11 +518,20 @@ int main()
 	ClockFont.loadFromFile("C:/Users/User/Documents/2DSpaceGame/Assets/Protector.ttf");
 	GlobalClock.setFont(ClockFont);
 	GlobalClock.setCharacterSize(24);
+	int TimeDialation = 1;
+	const float DialationSettings[7] = { 0,0.5,1,2,6,15,32 };
 
 
 	FleetStruct* TempFleet;
 
-	int adddd = 0;
+	int CurrentTimeStamp = 0;
+	//used for controlling what year it is
+
+
+	//This code should only be run when a new game is created
+	LoadFactionData(PlayerFaction, &Systems);
+
+
 	while (window.isOpen())
 	{
 		TimeBegin = std::chrono::high_resolution_clock::now();
@@ -362,6 +549,27 @@ int main()
 
 			if (event.type == sf::Event::KeyPressed)
 			{
+				//TODO this is only a quick method of exiting
+				if (event.key.code == sf::Keyboard::Escape)
+				{
+					window.close();
+				}
+
+
+
+				//Time dialation
+				if (event.key.code == sf::Keyboard::Up && TimeDialation < 6)
+				{
+					//Increase game speed
+					TimeDialation++;
+					
+				}
+				else if(event.key.code == sf::Keyboard::Down && TimeDialation >0)
+				{
+					//Decrease game speed
+					TimeDialation--;
+				}
+
 				if (event.key.code == sf::Keyboard::W)
 				{
 					CameraLocation.y -= 16;
@@ -412,7 +620,26 @@ int main()
 					}
 					else
 					{
-						PlanetUI->BuildableShips.clear();
+						//Remove shipsbuild buttons from UI aspects
+						for (size_t i = 0; i < UIAspects.size(); i++)
+						{		
+							
+								//Not the best or cleanest solution but it works
+								for (size_t j = 0; j < PlanetUI->BuildableShips.size(); j++)
+								{
+									if (PlanetUI->BuildableShips.at(j) == UIAspects.at(i))
+									{
+										UIAspects.erase(UIAspects.begin()+i);
+										std::cout << "erased" << std::endl;
+										
+									}
+
+								}
+
+						}
+
+						while (!PlanetUI->BuildableShips.empty()) delete PlanetUI->BuildableShips.back(), PlanetUI->BuildableShips.pop_back();
+						
 
 						// TODO: Remove UI planets when planet viewer is closed
 					}
@@ -447,8 +674,8 @@ int main()
 		//Sol->RenderSystem(&window,CameraLocation);
 		for (size_t i = 0; i < Systems.size(); i++)
 		{
-			Systems.at(i)->RenderSystem(&window, CameraLocation, TStore);
-			Systems.at(i)->EventTick(DeltaTime);
+			Systems.at(i)->RenderSystem(&window, CameraLocation, TStore, PlayerFaction);
+			Systems.at(i)->EventTick(DeltaTime*DialationSettings[TimeDialation],FreeFleets);
 		}
 
 
@@ -460,16 +687,76 @@ int main()
 
 
 			RenderShipQueue(&window);
-			TempFleet = SystemUI->RenderSystemUI(&window,CurrentSystem);
-			if (TempFleet)
+			TempFleet = SystemUI->RenderSystemUI(&window, CurrentSystem);
+			if (TempFleet != nullptr)
 			{
+				std::cout << "fleet enum" << std::endl;
 				CurrentFleet = TempFleet;
 				CurrentSelect = SelectEnum::Fleet;
 			}
-			
+			if (CurrentFleet != nullptr)
+			{
+				if (CurrentFleet->Ships.size() == 1)
+				{
+					ActionsUIShip->RenderShipActions(&window,CurrentFleet,CurrentSystem,CurrentPlanet, &CurrentSelect);
+				}
+			}
 			
 		}
 
+
+		//Draw and tick free fleets
+		for (size_t i = 0; i < FreeFleets.size(); i++)
+		{
+			FreeFleets.at(i)->RenderFleet(&window,CameraLocation);
+			FreeFleets.at(i)->EventTick(DeltaTime* DialationSettings[TimeDialation]);
+
+			if (FreeFleets.at(i)->Distance(FreeFleets.at(i)->Location,sf::Vector2f(FreeFleets.at(i)->TargetSystem->Location))<0.1)
+			{
+				//Add the ships to the system
+				for (size_t j = 0; j < FreeFleets.at(i)->Ships.size(); j++)
+				{
+					FreeFleets.at(i)->TargetSystem->SystemShips.push_back(FreeFleets.at(i)->Ships.at(j));
+
+				}
+
+
+				delete FreeFleets.at(i);
+				FreeFleets.erase(FreeFleets.begin()+i);
+			}
+		}
+
+
+
+		for (size_t i = 0; i < PlanetUI->BuildableShips.size(); i++)
+		{
+			if (PlanetUI->BuildableShips.at(i)->isHovering(sf::Mouse::getPosition()))
+			{
+				if (CentralPanel->CurrentObject != PlanetUI->BuildableShips.at(i)->ShipToBuild->Name)
+				{
+					//Change the current image and details
+					CentralPanel->CurrentObject = PlanetUI->BuildableShips.at(i)->ShipToBuild->Name;
+					CentralPanel->Reload();
+					
+				}
+				break;
+			}
+			else
+			{
+				CentralPanel->CurrentObject = "";
+			}
+		}
+		CentralPanel->RenderPanel(&window);
+
+
+		//Technology tick
+		if (GlobalTime > CurrentTimeStamp)
+		{
+			CurrentTimeStamp++;
+			TechnologyTick(DeltaTime, Factions, Systems);
+		}
+		
+		
 		
 
 
@@ -484,7 +771,7 @@ int main()
 
 		TimeEnd = std::chrono::high_resolution_clock::now();
 		DeltaTime = std::chrono::duration<double>(TimeEnd - TimeBegin).count();
-		GlobalTime += DeltaTime/100;
+		GlobalTime += DeltaTime* DialationSettings[TimeDialation] /100;
 		
 	}
 

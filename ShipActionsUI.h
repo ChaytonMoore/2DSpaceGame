@@ -15,7 +15,7 @@ public:
 		Terraform = new Button(sf::Vector2i(1450, 150), "Terraform");
 	}
 
-	void RenderShipActions(sf::RenderWindow* window, FleetStruct* CurrentFleet, System* CurrentSystem, Planet* CurrentPlanet, SelectEnum* select);
+	void RenderShipActions(sf::RenderWindow* window, FleetStruct* CurrentFleet, System* CurrentSystem, Planet* CurrentPlanet, SelectEnum* select, Faction* PlayerFaction);
 	
 
 

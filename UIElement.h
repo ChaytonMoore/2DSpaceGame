@@ -1,5 +1,6 @@
 #pragma once
 #include <SFML/Graphics.hpp>
+
 class UIElement
 {
 public: virtual ~UIElement() {}

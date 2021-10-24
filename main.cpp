@@ -20,12 +20,16 @@
 #include "MainMenu.h"
 #include "Battle.h"
 #include "EventHandler.h"
+#include "TopMenu.h"
+#include "Border.h"
+#include "MusicPlayer.h"
+
 
 
 
 //#include "Faction.h"
 
-sf::Vector2i CameraLocation = sf::Vector2i(0,0);
+sf::Vector2f CameraLocation = sf::Vector2f(0,0);
 
 System* CurrentSystem;
 Planet* CurrentPlanet;
@@ -46,10 +50,12 @@ double GlobalTime = 0;
 SelectEnum CurrentSelect = SelectEnum::Basic;
 DetailsPanel* CentralPanel;
 
-
+float CurrentZoom = 1;
 
 void Faction::LoadShips()
 {
+
+	
 	std::string Line;
 	std::ifstream File("C:/Users/User/Documents/2DSpaceGame/Assets/Ships.csv");
 	std::vector<std::string> split;
@@ -59,10 +65,10 @@ void Faction::LoadShips()
 	while (std::getline(File, Line)) 
 	{
 		split = System::SplitString(Line, ',');
-		if (split.at(0) != "Title" && split.size()>12)
-		{
 
-			
+		//if ((split.at(0) != "Title") && split.size() > 12);
+		if(split.at(0) != "Title" && FactionName == split.at(21))
+		{
 
 			FactionShips.push_back(new ShipType);
 
@@ -82,7 +88,7 @@ void Faction::LoadShips()
 			col = split.at(12);
 			for (size_t i = 0; i < col.size(); i++)
 			{
-				FactionShips.back()->Colonisable.push_back(ShipType::FromChar(col.at(i)));
+				FactionShips.back()->Colonisable.push_back(PlanetFromChar(col.at(i)));
 				
 			}
 
@@ -95,12 +101,12 @@ void Faction::LoadShips()
 			col = split.at(18);
 			for (size_t i = 0; i < col.size(); i++)
 			{
-				FactionShips.back()->Terraformable.push_back(ShipType::FromChar(col.at(i)));
+				FactionShips.back()->Terraformable.push_back(PlanetFromChar(col.at(i)));
 
 			}
 
 			FactionShips.back()->type = split.at(19);
-
+			FactionShips.back()->Capacity = std::stoi(split.at(20));
 
 			
 			
@@ -110,7 +116,8 @@ void Faction::LoadShips()
 }
 
 
-//Might: make it so this works generically 
+//Might: make it so this works generically instead as just for player faction
+//it actually probably does work generically and so it's only in the name
 std::vector<ShipType*> GetBuildableShips(Faction* PlayerFaction)
 {
 	std::vector<ShipType*> output;
@@ -129,6 +136,7 @@ std::vector<ShipType*> GetBuildableShips(Faction* PlayerFaction)
 				valid = valid && PlayerFaction->EngineTech >= PlayerFaction->FactionShips.at(i)->EngineTech && PlayerFaction->ShipbuildingTech >= PlayerFaction->FactionShips.at(i)->ShipTech && PlayerFaction->ShieldTech >= PlayerFaction->FactionShips.at(i)->ShieldTech && PlayerFaction->SensorTech >= PlayerFaction->FactionShips.at(i)->Sensortech && PlayerFaction->WeaponsTech >= PlayerFaction->FactionShips.at(i)->WeaponTech;
 				valid = valid && CurrentSystem->GetPopulation() > PlayerFaction->FactionShips.at(i)->Crew*100;
 				valid = valid && CurrentSystem->SimpleMetal >= PlayerFaction->FactionShips.at(i)->RequiredMetal && CurrentSystem->Titanium >= PlayerFaction->FactionShips.at(i)->RequiredTitanium && CurrentSystem->RareMetal >= PlayerFaction->FactionShips.at(i)->RequiredRare;
+				
 				if (valid)
 				{
 					output.push_back(PlayerFaction->FactionShips.at(i));
@@ -137,6 +145,32 @@ std::vector<ShipType*> GetBuildableShips(Faction* PlayerFaction)
 		}
 
 	}
+
+	std::string varients[8] = {"scout","frigate","destroyer","cruiser","dreadnought","transport","colony","colonyBig"};
+	ShipType* LastInstance;
+	int idx;
+	for (size_t i = 0; i < 8; i++)
+	{
+		LastInstance = nullptr;
+		idx = output.size();
+		idx--;
+		while (idx>0)
+		{
+			
+			if (LastInstance && output.at(idx)->type == varients[i])
+			{
+				output.erase(output.begin() + idx);
+				
+			}
+			else if (output.at(idx)->type == varients[i])
+			{
+				LastInstance = output.at(idx);
+			}
+			idx--;
+			
+		}
+	}
+
 	return output;
 }
 
@@ -160,22 +194,31 @@ int FindMostPopulated(System* sys)
 
 }
 
-float SystemDistance(sf::Vector2f a, sf::Vector2f b)
+
+
+
+
+
+void PlanetUIElement::ResetBuildableships()
 {
-	float x,y;
-	x = abs(a.x - b.x);
-	
-	y = abs(a.y - b.y);
-	
-	
-	
-	return (sqrt(x * x + y * y)/75);
+
+	//Clear the potentials of uneeded elements
+
+
+	while (!BuildableShips.empty()) delete BuildableShips.back(), BuildableShips.pop_back();
+
+
+	if (CurrentSystem->OwningFaction)
+	{
+		for (size_t i = 0; i < GetBuildableShips(CurrentSystem->OwningFaction).size(); i++)
+		{
+			
+			BuildableShips.push_back(new ShipBuildButton(sf::Vector2i(30, 200), GetBuildableShips(CurrentSystem->OwningFaction).at(i)->Name, GetBuildableShips(CurrentSystem->OwningFaction).at(i)));
+			//delete if already present
+		}
+	}
+
 }
-
-
-
-
-
 
 void ClickHandle(std::vector<UIElement*> Potentials, PlanetUIElement* PlanetUI)
 {
@@ -185,7 +228,7 @@ void ClickHandle(std::vector<UIElement*> Potentials, PlanetUIElement* PlanetUI)
 
 	for (size_t i = 0; i < Potentials.size(); i++)
 	{
-
+		
 
 
 		//re arrange the if statements
@@ -255,7 +298,8 @@ void ClickHandle(std::vector<UIElement*> Potentials, PlanetUIElement* PlanetUI)
 							CurrentPlanet = CurrentSystem->Planets.at(FindMostPopulated(CurrentSystem));
 						}
 						((System*)(Potentials.at(i)))->ClickedOn();
-
+						//Reset the ships as it's a new system
+						PlanetUI->ResetBuildableships();
 
 
 						//move up
@@ -372,6 +416,10 @@ void SetUpPlanetSprites(System* system, std::vector<PlanetTexture*> PlanetTextur
 		{
 			system->Planets.at(i)->PlanetSprite->setTexture(*PlanetTextures.at(3)->texture);
 		}
+		else if (system->Planets.at(i)->PlanetType == M)
+		{
+			system->Planets.at(i)->PlanetSprite->setTexture(*PlanetTextures.at(4)->texture);
+		}
 		else
 		{
 			
@@ -385,11 +433,10 @@ void SetUpPlanetSprites(System* system, std::vector<PlanetTexture*> PlanetTextur
 	}
 }
 
-
 int ShipBuildButton::ClickedOn()
 {
 	//Remove resources
-	std::cout << " " << CurrentSystem->SimpleMetal << " " << ShipToBuild->RequiredMetal << std::endl;
+	
 	CurrentSystem->SimpleMetal = CurrentSystem->SimpleMetal - ShipToBuild->RequiredMetal;
 	CurrentSystem->Titanium = CurrentSystem->Titanium - ShipToBuild->RequiredTitanium;
 	CurrentSystem->RareMetal = CurrentSystem->RareMetal - ShipToBuild->RequiredRare;
@@ -409,28 +456,6 @@ int ShipBuildButton::ClickedOn()
 	return 1;
 }
 
-void PlanetUIElement::ResetBuildableships()
-{
-
-	//Clear the potentials of uneeded elements
-
-
-	while (!BuildableShips.empty()) delete BuildableShips.back(), BuildableShips.pop_back();
-
-	
-
-	for (size_t i = 0; i < GetBuildableShips(CurrentSystem->OwningFaction).size(); i++)
-	{
-		BuildableShips.push_back(new ShipBuildButton(sf::Vector2i(30, 200), GetBuildableShips(CurrentSystem->OwningFaction).at(i)->Name, GetBuildableShips(CurrentSystem->OwningFaction).at(i)));
-	}
-
-
-
-	//Add to potentials
-
-}
-
-
 
 void PlayerFactionStart(Faction* PlayerFaction, std::vector<System*> systems)
 {
@@ -446,9 +471,9 @@ void PlayerFactionStart(Faction* PlayerFaction, std::vector<System*> systems)
 	
 }
 
-void LoadFactionData(Faction* Faction, std::vector<System*>* Systems)
+void LoadFactionData(FactionData* Faction, std::vector<System*>* Systems)
 {
-	std::ifstream File("C:/Users/User/Documents/2DSpaceGame/Assets/Profiles/" + Faction->FactionName + ".txt");
+	std::ifstream File("C:/Users/User/Documents/2DSpaceGame/Assets/Profiles/" + Faction->OwningFaction->FactionName + ".txt");
 	std::vector<std::string> split;
 	std::string a;
 	File >> a;
@@ -460,12 +485,15 @@ void LoadFactionData(Faction* Faction, std::vector<System*>* Systems)
 
 		for (size_t i = 0; i < Systems->size(); i++)
 		{
-			Systems->at(i)->SimpleMetal = std::stoi(split.at(0));
-			Systems->at(i)->Titanium = std::stoi(split.at(1));
-			Systems->at(i)->RareMetal = std::stoi(split.at(2));
+			
 
-			if (Systems->at(i)->OwningFaction == Faction)
+			if (Systems->at(i)->OwningFaction == Faction->OwningFaction)
 			{
+				Systems->at(i)->SimpleMetal = std::stoi(split.at(0));
+				Systems->at(i)->Titanium = std::stoi(split.at(1));
+				Systems->at(i)->RareMetal = std::stoi(split.at(2));
+
+
 				//Now find the most populated planet
 				pop = FindMostPopulated(Systems->at(i));
 				Systems->at(i)->Planets.at(pop)->Medical = MedicalLevels(std::stoi(split.at(3)));
@@ -473,27 +501,38 @@ void LoadFactionData(Faction* Faction, std::vector<System*>* Systems)
 				Systems->at(i)->Planets.at(pop)->Shipyard = ShipyardLevels(std::stoi(split.at(5)));
 				Systems->at(i)->Planets.at(pop)->Lab = ScienceLevels(std::stoi(split.at(6)));
 
+				//This is fragmented and bad
+				Systems->at(i)->Planets.at(pop)->Observatory = Observatory(std::stoi(split.at(20)));
+
+				Faction->OwnedSystems.push_back(Systems->at(i));
 			}
 
 		}
 
-		Faction->MedicalCoef = std::stof(split.at(7));
-		Faction->MiningCoef = std::stof(split.at(8));
-		Faction->Farmingcoef = std::stof(split.at(9));
+		Faction->OwningFaction->MedicalCoef = std::stof(split.at(7));
+		Faction->OwningFaction->MiningCoef = std::stof(split.at(8));
+		Faction->OwningFaction->Farmingcoef = std::stof(split.at(9));
 
-		Faction->ConstructionCoef = std::stof(split.at(10));
-		Faction->ShipBuildingCoef = std::stof(split.at(11));
-		Faction->WeaponsCoef = std::stof(split.at(12));
+		Faction->OwningFaction->ConstructionCoef = std::stof(split.at(10));
+		Faction->OwningFaction->ShipBuildingCoef = std::stof(split.at(11));
+		Faction->OwningFaction->WeaponsCoef = std::stof(split.at(12));
 
-		Faction->ShieldCoef = std::stof(split.at(13));
-		Faction->EngineCoef = std::stof(split.at(14));
-		Faction->SensorCoef = std::stof(split.at(15));
+		Faction->OwningFaction->ShieldCoef = std::stof(split.at(13));
+		Faction->OwningFaction->EngineCoef = std::stof(split.at(14));
+		Faction->OwningFaction->SensorCoef = std::stof(split.at(15));
+		Faction->OwningFaction->Scientificness = std::stof(split.at(16));
+		Faction->OwningFaction->Industrialness = std::stof(split.at(17));
+		Faction->OwningFaction->Militaryness = std::stof(split.at(18));
+		Faction->OwningFaction->Xenophileness = std::stof(split.at(19));
+		//call 20 is above in planet facilities
+		
+		
 	}
 	catch(std::out_of_range)
 	{
 		//throw std::out_of_range("Insufficient number of values in profile of: ");
 		std::string message;
-		message = "Insufficient number of values in profile of: " + Faction->FactionName;
+		message = "Insufficient number of values in profile of: " + Faction->OwningFaction->FactionName;
 		std::wstring s = std::wstring(message.begin(), message.end());
 
 		int msgboxID = MessageBox(
@@ -507,7 +546,7 @@ void LoadFactionData(Faction* Faction, std::vector<System*>* Systems)
 	
 }
 
-void TechnologyTick(double DeltaTime,std::vector<Faction*> Factions, std::vector<System*> Systems)
+void TechnologyTick(double DeltaTime,std::vector<FactionData*> Factions, std::vector<System*> Systems)
 {
 	//Yes this function is terrible yandere level code
 
@@ -526,7 +565,7 @@ void TechnologyTick(double DeltaTime,std::vector<Faction*> Factions, std::vector
 		TotalResearch = 0;
 		for (size_t j = 0; j < Systems.size(); j++)
 		{
-			if (Systems.at(j)->OwningFaction == Factions.at(i))
+			if (Systems.at(j)->OwningFaction == Factions.at(i)->OwningFaction)
 			{
 				for (size_t n = 0; n < Systems.at(j)->Planets.size(); n++)
 				{
@@ -540,154 +579,154 @@ void TechnologyTick(double DeltaTime,std::vector<Faction*> Factions, std::vector
 		}
 		
 		//Each of the techs have its own value 
-		if (TotalResearch*Factions.at(i)->MedicalCoef > Factions.at(i)->MedicalTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch*Factions.at(i)->OwningFaction->MedicalCoef > Factions.at(i)->OwningFaction->MedicalTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->MedicalTech++;
-			EventHandler::TechAdvanceNotification("Medical", Factions.at(i)->MedicalTech);
+			Factions.at(i)->OwningFaction->MedicalTech++;
+			EventHandler::TechAdvanceNotification("Medical", Factions.at(i)->OwningFaction->MedicalTech);
 		}
 		else
 		{
 			//Random chance it is advanced
 			
-			if (TotalResearch * Factions.at(i)->MedicalCoef -5 > rand() % (int(pow(Factions.at(i)->MedicalTech, 2)+1) * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->MedicalCoef -5 > rand() % (int(pow(Factions.at(i)->OwningFaction->MedicalTech, 2)+1) * 16))
 			{
 				
-				Factions.at(i)->MedicalTech++;
-				EventHandler::TechAdvanceNotification("Medical", Factions.at(i)->MedicalTech);
+				Factions.at(i)->OwningFaction->MedicalTech++;
+				EventHandler::TechAdvanceNotification("Medical", Factions.at(i)->OwningFaction->MedicalTech);
 			}
 		}
 		
 		
-		if (TotalResearch * Factions.at(i)->MiningCoef > Factions.at(i)->MiningTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->MiningCoef > Factions.at(i)->OwningFaction->MiningTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->MiningTech++;
-			EventHandler::TechAdvanceNotification("Mining", Factions.at(i)->MiningTech);
+			Factions.at(i)->OwningFaction->MiningTech++;
+			EventHandler::TechAdvanceNotification("Mining", Factions.at(i)->OwningFaction->MiningTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->MiningCoef -5 > rand() % (int(pow(Factions.at(i)->MiningTech, 2)+1) * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->MiningCoef -5 > rand() % (int(pow(Factions.at(i)->OwningFaction->MiningTech, 2)+1) * 16))
 			{
 				
-				Factions.at(i)->MiningTech++;
-				EventHandler::TechAdvanceNotification("Mining", Factions.at(i)->MiningTech);
+				Factions.at(i)->OwningFaction->MiningTech++;
+				EventHandler::TechAdvanceNotification("Mining", Factions.at(i)->OwningFaction->MiningTech);
 			}
 		}
 
-		if (TotalResearch * Factions.at(i)->Farmingcoef > Factions.at(i)->FarmingTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->Farmingcoef > Factions.at(i)->OwningFaction->FarmingTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->FarmingTech++;
-			EventHandler::TechAdvanceNotification("Farming", Factions.at(i)->FarmingTech);
+			Factions.at(i)->OwningFaction->FarmingTech++;
+			EventHandler::TechAdvanceNotification("Farming", Factions.at(i)->OwningFaction->FarmingTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->Farmingcoef-5 > rand() % (int(pow(Factions.at(i)->FarmingTech, 2)+1) * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->Farmingcoef-5 > rand() % (int(pow(Factions.at(i)->OwningFaction->FarmingTech, 2)+1) * 16))
 			{
-				Factions.at(i)->FarmingTech++;
-				EventHandler::TechAdvanceNotification("Farming", Factions.at(i)->FarmingTech);
+				Factions.at(i)->OwningFaction->FarmingTech++;
+				EventHandler::TechAdvanceNotification("Farming", Factions.at(i)->OwningFaction->FarmingTech);
 			}
 		}
 
-		if (TotalResearch * Factions.at(i)->ConstructionCoef > Factions.at(i)->ConstructionTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->ConstructionCoef > Factions.at(i)->OwningFaction->ConstructionTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->ConstructionTech++;
-			EventHandler::TechAdvanceNotification("Contruction", Factions.at(i)->ConstructionTech);
+			Factions.at(i)->OwningFaction->ConstructionTech++;
+			EventHandler::TechAdvanceNotification("Contruction", Factions.at(i)->OwningFaction->ConstructionTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->ConstructionCoef-5 > rand() % (int(pow(Factions.at(i)->ConstructionTech, 2)+1) * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->ConstructionCoef-5 > rand() % (int(pow(Factions.at(i)->OwningFaction->ConstructionTech, 2)+1) * 16))
 			{
-				Factions.at(i)->ConstructionTech++;
-				EventHandler::TechAdvanceNotification("Contruction", Factions.at(i)->ConstructionTech);
+				Factions.at(i)->OwningFaction->ConstructionTech++;
+				EventHandler::TechAdvanceNotification("Contruction", Factions.at(i)->OwningFaction->ConstructionTech);
 			}
 		}
 
-		if (TotalResearch * Factions.at(i)->ShipBuildingCoef > Factions.at(i)->ShipbuildingTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->ShipBuildingCoef > Factions.at(i)->OwningFaction->ShipbuildingTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->ShipbuildingTech++;
-			EventHandler::TechAdvanceNotification("Ship Building", Factions.at(i)->ShipbuildingTech);
+			Factions.at(i)->OwningFaction->ShipbuildingTech++;
+			EventHandler::TechAdvanceNotification("Ship Building", Factions.at(i)->OwningFaction->ShipbuildingTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->ShipBuildingCoef-5 > rand() % (int(pow(Factions.at(i)->ShipbuildingTech, 2)+1) * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->ShipBuildingCoef-5 > rand() % (int(pow(Factions.at(i)->OwningFaction->ShipbuildingTech, 2)+1) * 16))
 			{
-				Factions.at(i)->ShipbuildingTech++;
-				EventHandler::TechAdvanceNotification("Ship Building", Factions.at(i)->ShipbuildingTech);
+				Factions.at(i)->OwningFaction->ShipbuildingTech++;
+				EventHandler::TechAdvanceNotification("Ship Building", Factions.at(i)->OwningFaction->ShipbuildingTech);
 			}
 		}
 
-		if (TotalResearch * Factions.at(i)->WeaponsCoef > Factions.at(i)->WeaponsTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->WeaponsCoef > Factions.at(i)->OwningFaction->WeaponsTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->WeaponsTech++;
-			EventHandler::TechAdvanceNotification("Weapon", Factions.at(i)->WeaponsTech);
+			Factions.at(i)->OwningFaction->WeaponsTech++;
+			EventHandler::TechAdvanceNotification("Weapon", Factions.at(i)->OwningFaction->WeaponsTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->WeaponsCoef-5 > rand() % (int(pow(Factions.at(i)->WeaponsTech, 2)+1) * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->WeaponsCoef-5 > rand() % (int(pow(Factions.at(i)->OwningFaction->WeaponsTech, 2)+1) * 16))
 			{
-				Factions.at(i)->WeaponsTech++;
-				EventHandler::TechAdvanceNotification("Weapon", Factions.at(i)->WeaponsTech);
+				Factions.at(i)->OwningFaction->WeaponsTech++;
+				EventHandler::TechAdvanceNotification("Weapon", Factions.at(i)->OwningFaction->WeaponsTech);
 			}
 		}
 
 
-		if (TotalResearch * Factions.at(i)->ShieldCoef > Factions.at(i)->ShieldTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->ShieldCoef > Factions.at(i)->OwningFaction->ShieldTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->ShieldTech++;
-			EventHandler::TechAdvanceNotification("Shield", Factions.at(i)->ShieldTech);
+			Factions.at(i)->OwningFaction->ShieldTech++;
+			EventHandler::TechAdvanceNotification("Shield", Factions.at(i)->OwningFaction->ShieldTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->ShieldCoef-5 > rand() % int(pow(Factions.at(i)->ShieldTech, 2)+1 * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->ShieldCoef-5 > rand() % int(pow(Factions.at(i)->OwningFaction->ShieldTech, 2)+1 * 16))
 			{
-				Factions.at(i)->ShieldTech++;
-				EventHandler::TechAdvanceNotification("Shield", Factions.at(i)->ShieldTech);
+				Factions.at(i)->OwningFaction->ShieldTech++;
+				EventHandler::TechAdvanceNotification("Shield", Factions.at(i)->OwningFaction->ShieldTech);
 			}
 		}
 
 
-		if (TotalResearch * Factions.at(i)->EngineCoef > Factions.at(i)->EngineTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->EngineCoef > Factions.at(i)->OwningFaction->EngineTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->EngineTech++;
-			EventHandler::TechAdvanceNotification("Engine", Factions.at(i)->EngineTech);
+			Factions.at(i)->OwningFaction->EngineTech++;
+			EventHandler::TechAdvanceNotification("Engine", Factions.at(i)->OwningFaction->EngineTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->EngineCoef-5 > rand() % int(pow(Factions.at(i)->EngineTech, 2)+1 * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->EngineCoef-5 > rand() % int(pow(Factions.at(i)->OwningFaction->EngineTech, 2)+1 * 16))
 			{
-				Factions.at(i)->EngineTech++;
-				EventHandler::TechAdvanceNotification("Engine", Factions.at(i)->EngineTech);
+				Factions.at(i)->OwningFaction->EngineTech++;
+				EventHandler::TechAdvanceNotification("Engine", Factions.at(i)->OwningFaction->EngineTech);
 			}
 		}
 
-		if (TotalResearch * Factions.at(i)->SensorCoef > Factions.at(i)->SensorTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
+		if (TotalResearch * Factions.at(i)->OwningFaction->SensorCoef > Factions.at(i)->OwningFaction->SensorTech * TechConst) //Might want to increase this at a different rate perhaps by a power of 2.
 		{
 			//If the tech is higher it'll just advance the tech
-			Factions.at(i)->SensorTech++;
-			EventHandler::TechAdvanceNotification("Sensor", Factions.at(i)->SensorTech);
+			Factions.at(i)->OwningFaction->SensorTech++;
+			EventHandler::TechAdvanceNotification("Sensor", Factions.at(i)->OwningFaction->SensorTech);
 		}
 		else
 		{
 			//Random chance it is advanced
-			if (TotalResearch * Factions.at(i)->SensorCoef-5 > rand() % int(pow(Factions.at(i)->SensorTech, 2)+1 * 16))
+			if (TotalResearch * Factions.at(i)->OwningFaction->SensorCoef-5 > rand() % int(pow(Factions.at(i)->OwningFaction->SensorTech, 2)+1 * 16))
 			{
-				Factions.at(i)->SensorTech++;
-				EventHandler::TechAdvanceNotification("Sensor", Factions.at(i)->SensorTech);
+				Factions.at(i)->OwningFaction->SensorTech++;
+				EventHandler::TechAdvanceNotification("Sensor", Factions.at(i)->OwningFaction->SensorTech);
 			}
 		}
 
@@ -698,7 +737,6 @@ void TechnologyTick(double DeltaTime,std::vector<Faction*> Factions, std::vector
 
 
 }
-
 
 
 bool GetShouldResetShipBuild(std::vector<ShipBuildButton*> ships, System* system)
@@ -717,13 +755,206 @@ bool GetShouldResetShipBuild(std::vector<ShipBuildButton*> ships, System* system
 	return out;
 }
 
+void CreateShips(std::vector<BattleShip*>* Ships1, std::vector<BattleShip*>* Ships2, std::vector<ShipInstance*> F1, std::vector<ShipInstance*> F2, BattleSounds* Sounds)
+{
+	//the cross over in textures will be minor.
+	std::vector<sf::Image*> temp ;
+	std::vector<sf::Texture*> tempT;
+	for (size_t i = 0; i < F1.size(); i++)
+	{
+		temp.push_back(new sf::Image);
+		tempT.push_back(new sf::Texture);
+		temp.back()->loadFromFile("C:/Users/User/Documents/2DSpaceGame/Textures/Battle/" + F1.at(i)->Type->Name + ".png");
+		tempT.back()->loadFromImage(*temp.back());
+		Ships1->push_back(new BattleShip(F1.at(i)->Type, tempT.back(), 0, Sounds));
+		Ships1->back()->Location = sf::Vector2f(10,100 * (i+1));
+		
+	}
+
+	for (size_t i = 0; i < F2.size(); i++)
+	{
+		temp.push_back(new sf::Image);
+		tempT.push_back(new sf::Texture);
+		temp.back()->loadFromFile("C:/Users/User/Documents/2DSpaceGame/Textures/Battle/" + F2.at(i)->Type->Name + ".png");
+		tempT.back()->loadFromImage(*temp.back());
+		Ships2->push_back(new BattleShip(F2.at(i)->Type, tempT.back(), 1, Sounds));
+		Ships2->back()->Location = sf::Vector2f(1800, 100 * (i+1));
+	}
+
+
+
+}
+
+
+
+
+
+
+BattleReturn Battle(Faction* Faction1, Faction* Faction2, std::vector<ShipInstance*> Faction1Ships, std::vector<ShipInstance*> Faction2Ships)
+{
+	BattleSounds* Sounds = new BattleSounds();
+
+	
+
+	std::vector<BattleShip*> Ships1;
+	std::vector<BattleShip*> Ships2;
+
+	std::vector<TorpedoType*> FreeTorpedos;
+	std::vector<KineticType*> FreeKinetics;
+	std::vector<BeamType*> FreeBeams;
+	Faction* Facs[2];
+	Facs[0] = Faction1Ships.front()->OwningFaction;
+	Facs[1] = Faction2Ships.front()->OwningFaction;
+
+
+	std::vector<BattleShip*> Store1;
+	std::vector<BattleShip*> Store2;
+	Store1 = Ships1;
+	Store2 = Ships2;
+	CreateShips(&Ships1, &Ships2, Faction1Ships, Faction2Ships, Sounds);
+
+
+	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Battle", sf::Style::Fullscreen);
+
+
+	BattleReturn output;
+
+
+	while (window.isOpen())
+	{
+		// check all the window's events that were triggered since the last iteration of the loop
+		sf::Event event;
+		while (window.pollEvent(event))
+		{
+			// "close requested" event: we close the window
+			if (event.type == sf::Event::Closed)
+			{
+				window.close();
+			}
+
+			if (event.type == sf::Event::KeyPressed)
+			{
+				if (event.key.code == sf::Keyboard::Escape)
+				{
+					window.close();
+				}
+			}
+		}
+		window.clear();
+
+
+		
+
+		for (size_t i = 0; i < Ships1.size(); i++)
+		{
+			window.draw(Ships1.at(i)->Sprite);
+			window.draw(*Ships1.at(i)->HullInd);
+			if (Ships1.at(i)->Parent->Shields>0)
+			{
+				window.draw(*Ships1.at(i)->ShieldInd);
+			}
+			
+			BattleShipEventTick(Ships2, &FreeTorpedos, Ships1.at(i), &FreeKinetics, &FreeBeams, Sounds);
+			if (Ships1.at(i)->HullStrength<0)
+			{
+				delete Ships1.at(i);
+				Ships1.erase(Ships1.begin() + i);
+				if (Ships1.size() == 0 || Ships2.size() == 0)
+				{
+					output.Winner = Ships2.size();
+					output.Ships1 = BattleShip::ToInstances(Faction1,Store1,Faction1Ships);
+					output.Ships2 = BattleShip::ToInstances(Faction2, Store1, Faction2Ships);
+					return output;
+				}
+			}
+		}
+
+		for (size_t i = 0; i < Ships2.size(); i++)
+		{
+
+			window.draw(Ships2.at(i)->Sprite);
+			window.draw(*Ships2.at(i)->HullInd);
+			if (Ships2.at(i)->Parent->Shields > 0)
+			{
+				window.draw(*Ships2.at(i)->ShieldInd);
+			}
+
+			BattleShipEventTick(Ships1, &FreeTorpedos, Ships2.at(i), &FreeKinetics, &FreeBeams, Sounds);
+			if (Ships2.at(i)->HullStrength < 0)
+			{
+				delete Ships2.at(i);
+				Ships2.erase(Ships2.begin() + i);
+				if (Ships1.size() == 0 || Ships2.size() == 0)
+				{
+					output.Winner = Ships2.size();
+					output.Ships1 = BattleShip::ToInstances(Faction1, Store1, Faction1Ships);
+					output.Ships2 = BattleShip::ToInstances(Faction2, Store1, Faction2Ships);
+					return output;
+				}
+			}
+		}
+
+
+		//draw weapons
+		for (size_t i = 0; i < FreeTorpedos.size(); i++)
+		{
+			window.draw(*FreeTorpedos.at(i)->Circle);
+			if (FreeTorpedos.at(i)->EventTick())
+			{
+				//remove
+				FreeTorpedos.erase(FreeTorpedos.begin()+i);
+			}
+		}
+
+		for (size_t i = 0; i <FreeKinetics.size(); i++)
+		{
+			window.draw(FreeKinetics.at(i)->line, 2, sf::Lines);
+			if (FreeKinetics.at(i)->EventTick(&Ships1,&Ships2))
+			{
+				FreeKinetics.erase(FreeKinetics.begin() + i);
+			}
+		}
+		
+		for (size_t i = 0; i < FreeBeams.size(); i++)
+		{
+			FreeBeams.at(i)->line[0].position = FreeBeams.at(i)->Origin->GetCentreLocation();
+			FreeBeams.at(i)->line[1].position = FreeBeams.at(i)->Target->GetCentreLocation();
+			window.draw(FreeBeams.at(i)->line, 2, sf::Lines);
+			FreeBeams.at(i)->length--;
+			if (FreeBeams.at(i)->length < 0)
+			{
+				if (FreeBeams.at(i)->Target->ShieldStrength > 0)
+				{
+					FreeBeams.at(i)->Target->ShieldStrength -= FreeBeams.at(i)->Damage;
+				}
+				else
+				{
+					FreeBeams.at(i)->Target->HullStrength -= FreeBeams.at(i)->Damage;
+				}
+				FreeBeams.erase(FreeBeams.begin() + i);
+			}
+		}
+
+		window.display();
+
+	}
+
+
+
+
+}
 
 int main()
 {
+
 	
+
+
+
 	
 	//MenuRender();
 	CentralPanel = new DetailsPanel;
+
 
 	//The very first thing is to load the generic textures.
 	
@@ -736,7 +967,7 @@ int main()
 	LoadImageSF(&PlanetFocus,"PlanetSelect.png");
 	
 
-	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Game", sf::Style::Fullscreen); //This should be fullscreen but for testing windowed is easier
+	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Game", sf::Style::None); //This should be fullscreen but for testing windowed is easier
 	sf::Sprite Background;
 	LoadImageSF(&Background, "Background.png");
 	
@@ -745,24 +976,35 @@ int main()
 	//Create the factions
 
 
-	Faction* PlayerFaction = new Faction("Human");
-	PlayerFaction->LoadShips();
 
-	std::vector<Faction*> Factions;
-	Factions.push_back(PlayerFaction);
 
 	
+	
+	std::vector<FactionData*> Factions;
+	Factions.push_back(new FactionData("Human"));
+	//This will need to be done differently for different factions
+	FactionData* PlayerFaction = Factions.back();
+
+	Factions.push_back(new FactionData("Svethi"));
+	Factions.push_back(new FactionData("Taenos"));
+
+
+	
+
 
 	
 	//System* Sol = new System(sf::Vector2i(960,540),"Sol");
 	std::vector<UIElement*> UIAspects;
+
+	//top UI Aspect
+	TopMenu HorizMenu(Factions);
 	
 	//UIAspects.push_back(Sol);
 	//Sol->LoadSystem("Sol.csv");
 
 
 	std::vector<System*> Systems;
-	Systems = LoadSystems(PlayerFaction);
+	Systems = LoadSystems(FactionData::GetFactions(Factions));
 	for (size_t i = 0; i < Systems.size(); i++)
 	{
 		UIAspects.push_back(Systems.at(i));
@@ -826,16 +1068,52 @@ int main()
 
 
 	//This code should only be run when a new game is created
-	LoadFactionData(PlayerFaction, &Systems);
-
+	for (size_t i = 0; i < Factions.size(); i++)
+	{
+		LoadFactionData(Factions.at(i), &Systems);
+	}
+	
 
 	
+	//Create the border graphic
+	//Border* BorderGraphic = new Border(Systems,sf::Vector2i(1920,1080));
+
+	//create music
+	MusicPlayer* Music = new MusicPlayer();
+
+
+
 
 	while (window.isOpen())
 	{
+		//begin time
 		TimeBegin = std::chrono::high_resolution_clock::now();
-
+		//play music
+		Music->Tick();
 		
+
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+		{
+			CameraLocation.y -= 1 * pow(1 / CurrentZoom, 1);
+
+		}
+
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+		{
+			CameraLocation.y += 1 * pow(1 / CurrentZoom, 1);
+		}
+
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+		{
+			CameraLocation.x += 1 * pow(1 / CurrentZoom, 1);
+		}
+
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+		{
+			CameraLocation.x -= 1 * pow(1 / CurrentZoom, 1);
+
+		}
+
 
 		sf::Event event;
 		while (window.pollEvent(event))
@@ -868,34 +1146,18 @@ int main()
 					//Decrease game speed
 					TimeDialation--;
 				}
+				
 
 				if (event.key.code == sf::Keyboard::Space)
 				{
 					Paused = !Paused;
 				}
 
-				if (event.key.code == sf::Keyboard::W)
-				{
-					CameraLocation.y -= 16;
-				}
 
-				if (event.key.code == sf::Keyboard::S)
-				{
-					CameraLocation.y += 16;
-				}
-
-				if (event.key.code == sf::Keyboard::D)
-				{
-					CameraLocation.x += 16;
-				}
-
-				if (event.key.code == sf::Keyboard::A)
-				{
-					CameraLocation.x -= 16;
-				}
 
 				if (event.key.code == sf::Keyboard::Tab)
 				{
+
 					if (!SystemTabOpen)
 					{
 						//when it is opened
@@ -906,12 +1168,13 @@ int main()
 						//TODO : crashes if there is no selected system
 						if (CurrentSystem)
 						{
-							for (size_t i = 0; i < GetBuildableShips(PlayerFaction).size(); i++)
-							{
-								PlanetUI->BuildableShips.push_back(new ShipBuildButton(sf::Vector2i(30, 200), GetBuildableShips(PlayerFaction).at(i)->Name, GetBuildableShips(PlayerFaction).at(i)));
+							//for (size_t i = 0; i < GetBuildableShips(PlayerFaction->OwningFaction).size(); i++)
+							//{
+								//PlanetUI->BuildableShips.push_back(new ShipBuildButton(sf::Vector2i(30, 200), GetBuildableShips(PlayerFaction->OwningFaction).at(i)->Name, GetBuildableShips(PlayerFaction->OwningFaction).at(i)));
 
-								std::cout << GetBuildableShips(PlayerFaction).at(i)->Name << std::endl;
-							}
+								
+							//}
+							PlanetUI->ResetBuildableships();
 
 							//^Might be a memory leak
 
@@ -920,9 +1183,9 @@ int main()
 							//	UIAspects.push_back(PlanetUI->BuildableShips.at(i));
 
 							//}
-
+							CurrentSystem->AddUIPlanets(&UIAspects);
 						}
-						CurrentSystem->AddUIPlanets(&UIAspects);
+						
 						
 					}
 					else
@@ -939,6 +1202,8 @@ int main()
 			}
 
 
+
+
 			if (event.type == sf::Event::MouseButtonPressed)
 			{
 				if (event.key.code == sf::Mouse::Left)
@@ -952,8 +1217,10 @@ int main()
 			//scrolling was for the planet UI
 			if (event.type == sf::Event::MouseWheelMoved)
 			{
-				PlanetUI->CurrentScroll += event.mouseWheel.delta*16;
-				
+				//PlanetUI->CurrentScroll += event.mouseWheel.delta*16;
+				//^ the old use of the mouse wheel
+				CurrentZoom = (event.mouseWheel.delta==1)*CurrentZoom*1.1 + (event.mouseWheel.delta == -1) * CurrentZoom * 0.9;
+				CameraLocation += sf::Vector2f(50* event.mouseWheel.delta,50* event.mouseWheel.delta);
 			}
 
 		}
@@ -965,8 +1232,35 @@ int main()
 		//Sol->RenderSystem(&window,CameraLocation);
 		for (size_t i = 0; i < Systems.size(); i++)
 		{
-			Systems.at(i)->RenderSystem(&window, CameraLocation, TStore, PlayerFaction);
-			Systems.at(i)->EventTick(DeltaTime*DialationSettings[TimeDialation]*Paused,FreeFleets);
+			//systems are now rendered based on who can see them
+			//Systems.at(i)->RenderSystem(&window, CameraLocation, TStore, PlayerFaction->OwningFaction, CurrentZoom);
+			Systems.at(i)->EventTick(DeltaTime*DialationSettings[TimeDialation]*Paused,&FreeFleets,Systems);
+		}
+
+		//This event tick of the faction
+		for (size_t i = 0; i < Factions.size(); i++)
+		{
+			Factions.at(i)->FactionEventTick(DeltaTime,Systems,Factions,PlayerFaction);
+		}
+
+		for (size_t i = 0; i < PlayerFaction->KnownSystems.size(); i++)
+		{
+			PlayerFaction->KnownSystems.at(i)->RenderSystem(&window, CameraLocation, TStore, PlayerFaction->OwningFaction, CurrentZoom);
+		
+		}
+		for (size_t i = 0; i < PlayerFaction->ExploredSystems.size(); i++)
+		{
+			PlayerFaction->ExploredSystems.at(i)->RenderSystem(&window, CameraLocation, TStore, PlayerFaction->OwningFaction, CurrentZoom);
+		}
+		for (size_t i = 0; i < PlayerFaction->OwnedSystems.size(); i++)
+		{
+			PlayerFaction->OwnedSystems.at(i)->RenderSystem(&window, CameraLocation, TStore, PlayerFaction->OwningFaction, CurrentZoom);
+		}
+
+		//rotate current system
+		if (CurrentSystem)
+		{
+			CurrentSystem->CurrentSprite->rotate(DeltaTime*30);
 		}
 
 
@@ -976,17 +1270,18 @@ int main()
 			if(GetShouldResetShipBuild(PlanetUI->BuildableShips, CurrentSystem)) //passing system might not be necessary but keep it
 			{
 				PlanetUI->ResetBuildableships();
+				CentralPanel->CurrentObject = "";
 			}
 			 
 
 
 			RenderPlanets(&window, CurrentSystem);
 			PlanetUI->OwningPlanet = CurrentPlanet;
-			PlanetUI->RenderPlanetUI(&window,CurrentSystem->OwningFaction, (PlayerFaction == CurrentSystem->OwningFaction));
+			PlanetUI->RenderPlanetUI(&window,CurrentSystem->OwningFaction, (PlayerFaction->OwningFaction == CurrentSystem->OwningFaction));
 
 			
 			RenderShipQueue(&window);
-			TempFleet = SystemUI->RenderSystemUI(&window, CurrentSystem);
+			TempFleet = SystemUI->RenderSystemUI(&window, CurrentSystem, CentralPanel);
 			if (TempFleet != nullptr)
 			{
 				
@@ -1003,22 +1298,27 @@ int main()
 			
 
 			CentralPanel->RenderPanel(&window); //only want to render the central panel if the system is open, atleast right now
+			
 		}
 
 
 		//Draw and tick free fleets
 		for (size_t i = 0; i < FreeFleets.size(); i++)
 		{
-			FreeFleets.at(i)->RenderFleet(&window,CameraLocation);
+			FreeFleets.at(i)->RenderFleet(&window,CameraLocation,CurrentZoom);
 			FreeFleets.at(i)->EventTick(DeltaTime* DialationSettings[TimeDialation]*Paused);
-
+			
 			if (FreeFleets.at(i)->Distance(FreeFleets.at(i)->Location,sf::Vector2f(FreeFleets.at(i)->TargetSystem->Location))<0.1)
 			{
 				//Add the ships to the system
 				for (size_t j = 0; j < FreeFleets.at(i)->Ships.size(); j++)
 				{
 					FreeFleets.at(i)->TargetSystem->SystemShips.push_back(FreeFleets.at(i)->Ships.at(j));
-
+					//Freighter arrival script
+					if (FreeFleets.at(i)->Ships.at(j)->Type->Capacity) // freighter if the capacity is larger than 1
+					{
+						FreeFleets.at(i)->TargetSystem->FreighterArrive(FreeFleets.at(i)->Ships.at(j));
+					}
 				}
 
 
@@ -1059,7 +1359,8 @@ int main()
 				{
 					//Change the current image and details
 					CentralPanel->CurrentObject = PlanetUI->BuildableShips.at(i)->ShipToBuild->Name;
-					CentralPanel->Reload();
+					CentralPanel->CurrentSetting = PanelSetting::Ship;
+					CentralPanel->Reload(PlanetUI->BuildableShips.at(i)->ShipToBuild);
 
 				}
 				break;
@@ -1071,7 +1372,9 @@ int main()
 		}
 
 
-
+		//border stuff doesn't work
+		//BorderGraphic->Update(Factions,Systems);
+		//window.draw(BorderGraphic->spr);
 		
 
 
@@ -1079,7 +1382,14 @@ int main()
 		if (GlobalTime > CurrentTimeStamp)
 		{
 			CurrentTimeStamp++;
-			
+			//the faction tick should happen at the start as well
+			for (size_t i = 0; i < Factions.size(); i++)
+			{
+				Factions.at(i)->FactionTick(Systems,Factions);
+			}
+			//This is the yearly tick, monthly ticks are handled in function
+
+
 
 			//This is also the tick for generic events
 			if (GlobalTime>0.5)
@@ -1088,15 +1398,21 @@ int main()
 				//Very important that the time setting is set to 0
 
 				 //I might keep it this line solely so that players can focus on any task.
-				EventHandler::RandomGenericEvent(PlayerFaction, Systems);
-				Paused = false;
+
+
+
+				//Currently disable events as they're annoying
+				// EventHandler::RandomGenericEvent(PlayerFaction, Systems);
+				// Paused = false;
+				
 			}
 
 		}
 		
 		
-		
-
+		//render the top menu last thing as it's the very top ui element
+		HorizMenu.Render(&window, &Factions, PlayerFaction);
+		std::cout << "s" << Factions.size() << std::endl;
 
 		GlobalClock.setString("YEAR: "+std::to_string(GlobalTime));
 		window.draw(GlobalClock);

@@ -1,7 +1,7 @@
 #pragma once
 #include "UIElement.h"
-#include "System.h"
-
+#include "ShipActionsUI.h"
+#include "DetailsPanel.h"
 
 
 
@@ -20,10 +20,18 @@ public:
 	//This contains the visual elements for the ships in the system
 
 	std::vector<Button*> SystemShipButtons;
+	
+	std::vector<sf::Text> TerraformTimes;
 
+	FleetStruct* RenderSystemUI(sf::RenderWindow* window, System* Current, DetailsPanel* Panel);
 
-	FleetStruct* RenderSystemUI(sf::RenderWindow* window, System* Current);
+	SystemUIElement();
 
+	sf::RectangleShape ResourcePanel;
+	sf::Text SimpleMetal;
+	sf::Text Titanium;
+	sf::Text RareMetal;
 
 
 };
+

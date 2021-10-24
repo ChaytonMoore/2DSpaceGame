@@ -1,110 +1,170 @@
-#include "PlanetUIElement.h"
+#include "Planet.h"
 
 
-void PlanetUIElement::RenderPlanetUI(sf::RenderWindow* window)
+Planet::Planet(float size, PlanetClasses type)
 {
-	Size.setString("Size: "+std::to_string(OwningPlanet->PlanetSize));
-	Population.setString("Population: "+std::to_string(OwningPlanet->Population));
-	switch (OwningPlanet->PlanetType)
-	{
-	case D:PlanetClass.setString("Class: D"); break;
-	}
-
-	if (OwningPlanet->Population>50000000000)
-	{
-		PlanetLevel.setString("City Planet");
-	}
-	else if (OwningPlanet->Population > 1000000000)
-	{
-		PlanetLevel.setString("Developed Planet");
-	}
-	else if (OwningPlanet->Population > 100000000)
-	{
-		PlanetLevel.setString("Major Colony");
-	}
-	else if (OwningPlanet->Population > 1000000)
-	{
-		PlanetLevel.setString("Large Colony");
-	}
-	else if (OwningPlanet->Population > 100000)
-	{
-		PlanetLevel.setString("Colony");
-	}
-	else if (OwningPlanet->Population > 1000)
-	{
-		PlanetLevel.setString("Small Colony");
-	}
-	else if (OwningPlanet->Population > 0)
-	{
-		PlanetLevel.setString("Outpost");
-	}
-	else
-	{
-		PlanetLevel.setString("Uninhabitated");
-	}
-
-	if (OwningPlanet->Shipyard == ShipyardLevels::SurfaceShipyard)
-	{
-		ShipyardLevel.setString("Surface Shipyard");
-	}
-	else if (OwningPlanet->Shipyard == ShipyardLevels::BasicShipyard)
-	{
-		ShipyardLevel.setString("Basic Shipyard");
-	}
-	else if (OwningPlanet->Shipyard == ShipyardLevels::SpaceElevator)
-	{
-		ShipyardLevel.setString("Space Elevator");
-	}
-	else if (OwningPlanet->Shipyard == ShipyardLevels::AdvancedShipyards)
-	{
-		ShipyardLevel.setString("Advanced Shipyard");
-	}
-	else
-	{
-		ShipyardLevel.setString("No Shipyard");
-	}
+	PlanetSize = size;
+	PlanetType = type;
 
 
-	Size.setPosition(10, 100 - CurrentScroll);
-	Population.setPosition(10, 120 - CurrentScroll);
-	PlanetClass.setPosition(10, 140 - CurrentScroll);
-	PlanetLevel.setPosition(25, 160 - CurrentScroll);
-	ShipyardLevel.setPosition(15, 175 - CurrentScroll);
-
-
-	window->draw(Size);
-	window->draw(Population);
-	window->draw(PlanetClass);
-	window->draw(PlanetLevel);
-	window->draw(ShipyardLevel);
-
-	for (size_t i = 0; i < BuildableShips.size(); i++)
-	{
-		
-		BuildableShips.at(i)->Render(window,CurrentScroll);
-	}
+	TerraformTime = sqrt(size) * 8;
 	
+}
+
+
+int Planet::CalculateMetalOutput()
+{
+	//The base is the tenth root of the population
+	int base = pow(Population,0.1);
+	base += Mining;
+	return base;
+}
+
+int Planet::CalculateTitaniumOutput()
+{
+	return Mining * 2;
+}
+
+int Planet::CalculateRareOutput()
+{
+	return (Mining > 1) * (Mining - 1);
 
 }
 
-void PlanetUIElement::SetUpPlanetUI()
+
+
+
+float trunc_decs(float f,int decs)
 {
-	TextFont.loadFromFile("C:/Users/User/Documents/2DSpaceGame/Assets/EC.ttf");
+	int i1 = floor(f);
+	float rmnd = f - i1;
+	int i2 = static_cast<int> (rmnd * pow(10, decs));
+	float f1 = i2 / pow(10, decs);
 
-	Size.setFont(TextFont);
-	Size.setCharacterSize(10);
+	return i1 + f1;
+}
 
-	Population.setFont(TextFont);
-	Population.setCharacterSize(10);
 
-	PlanetClass.setFont(TextFont);
-	PlanetClass.setCharacterSize(10);
+std::string LargeToString(uint64_t num)
+{
 
-	PlanetLevel.setFont(TextFont);
-	PlanetLevel.setCharacterSize(12);
+	
 
-	ShipyardLevel.setFont(TextFont);
-	ShipyardLevel.setCharacterSize(16);
+	std::string out;
+
+	
+
+	if (num>1000000000)
+	{
+		out = std::to_string(trunc_decs(((float)num / 1000000000), 2)).substr(0,4) + " B";
+	}
+	else if(num>1000000)
+	{
+		out = std::to_string(trunc_decs(((float)num / 1000000), 2)).substr(0,4) + " M";
+	}
+	else if (num > 1000)
+	{
+		out = std::to_string(trunc_decs(((float)num / 1000), 2)).substr(0,4) + " K";
+	}
+	else
+	{
+		out = std::to_string(num);
+	}
+
+
+
+	return out;
+}
+
+
+std::vector<PlanetTexture*> LoadPlanetTextures()
+{
+	std::vector<PlanetTexture*> output;
+
+
+	std::string string;
+
+	
+	std::ifstream File("C:/Users/User/Documents/2DSpaceGame/Textures/PlanetRegistry.txt");
+
+	bool Completed = true;
+
+	sf::Image* Temp = new sf::Image;
+	while (std::getline(File, string))
+	{
+		Completed = Temp->loadFromFile("C:/Users/User/Documents/2DSpaceGame/Textures/"+string+".png") * Completed;
+		output.push_back(new PlanetTexture);
+		output.back()->texture = new sf::Texture; //This line might be redundant and creates a duplicte file
+		output.back()->texture->loadFromImage(*Temp);
+		output.back()->type = string[0];
+		
+	}
+
+	if (!Completed)
+	{
+		int msgboxID = MessageBox(
+			NULL,
+			("Not all of the planets could be loaded."), //contents
+			"File Error", //title
+			MB_ICONWARNING | MB_CANCELTRYCONTINUE | MB_DEFBUTTON2
+		);
+		
+
+		switch (msgboxID)
+		{
+		case IDCANCEL:
+			exit(-1);
+			
+		case IDTRYAGAIN:
+			output = LoadPlanetTextures();
+			//This might cause a memory leak
+			//TODO fix memory leak
+			//It does but it's a fairly small memory leak
+
+		
+			
+			
+		}
+
+	}
+
+
+	return output;
+}
+
+
+float PopulationCurve(int Population, int max)
+{
+	float out = 0;
+	if (Population > 50 && Population < 200)
+	{
+		out = 0.00033 * ((float)Population) - 6.62;
+	}
+	if (Population >= 200 && Population < 100000)
+	{
+		out = 0.05 - (3 * pow(10, -7)) * (float)Population;
+	}
+	if (Population >= 100000)
+	{
+		out = 0.02;
+	}
+
+	//The output is for delta population
+	return out;
+
+}
+
+void Planet::PlanetYearTick(Faction* OwningFaction)
+{
+
+	MaxPop = (ArableLand * (float)(9 + OwningFaction->FarmingTech) / 10) * 1000000 + OwningFaction->FarmingTech * 100000 * PlanetSize;
+
+
+	//population can't increase more than the arable land *(farmingtech+9)/10
+	if (Population < MaxPop)
+	{
+		Population += Population * PopulationCurve(Population, (ArableLand * (float)(9 + OwningFaction->FarmingTech) / 10));
+	}
 
 
 }

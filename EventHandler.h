@@ -32,10 +32,13 @@ class EventHandler
 	
 
 
-public:
+
 	void Run(std::string name, std::vector<std::string> strArgs);
+public:
 	//^ Originally event output but it's just the visual display
 	static EventOutput RandomGenericEvent(Faction* PlayerFaction, std::vector<System*> AllSystems);
+
+	static void TechAdvanceNotification(std::string type, int newLevel);
 };
 
 

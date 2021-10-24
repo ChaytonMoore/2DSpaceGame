@@ -1,6 +1,8 @@
 #pragma once
 #include <SFML/Graphics.hpp>
 #include "UIElement.h"
+#include <iostream>
+#include <SFML/Audio.hpp>
 
 
 class Button : public UIElement
@@ -14,6 +16,10 @@ public:
 	sf::RectangleShape rect;
 	sf::Text Text;
 	sf::Font TextFont;
+	bool Active = true;
+
+	sf::SoundBuffer soundFXB;
+	sf::Sound* soundFX;
 
 	Button(sf::Vector2i Position,std::string TextString)
 	{
@@ -32,7 +38,20 @@ public:
 		Text.setCharacterSize(14);
 		Text.setPosition(Position.x,Position.y);
 
+		soundFXB.loadFromFile("button.wav");
+		soundFX = new sf::Sound;
+		soundFX->setBuffer(soundFXB);
+
+
+
+
 	}
+
+	~Button()
+	{
+		delete soundFX;
+	}
+
 
 	void Render(sf::RenderWindow* window)
 	{
@@ -43,6 +62,8 @@ public:
 
 
 	bool isHovering(sf::Vector2i MouseLoc);
+
+	bool isClicked(sf::Vector2i MouseLoc);
 
 };
 

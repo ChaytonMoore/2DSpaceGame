@@ -6,11 +6,12 @@
 
 std::string EventTextModify(std::string text, std::vector<std::string> args)
 {
-	
+	//std::cout << args.size() << "args" << std::endl;
+	//std::cout << text << std::endl;
 	int idx = 0;
 	for (size_t i = 0; i < text.size(); i++)
 	{
-		if (text[i]=='#')
+		if (text[i]=='#' && args.size()>idx) 
 		{
 			text.insert(i,args.at(idx));
 			i += args.at(idx).size();
@@ -19,9 +20,17 @@ std::string EventTextModify(std::string text, std::vector<std::string> args)
 		}
 
 		//split the string up
-		if (i%60 == 0)
+		if (i%50 == 0 && i!= 0)
 		{
-			text.insert(i,"\n");
+			for (size_t j = 0; j < 14; j++)
+			{
+				if (text.at(i+j) == ' ')
+				{
+					text.insert(i+j, "\n");
+					break;
+				}
+			}
+			
 			
 		}
 	}
@@ -36,6 +45,13 @@ std::string EventTextModify(std::string text, std::vector<std::string> args)
 
 void EventHandler::Run(std::string name, std::vector<std::string> strArgs)
 {
+	//TODO remove
+	//these nofitications are annoying so i'll temp disable them
+	//might want to redo how this stuff is done
+	return;
+
+
+
 	window = (new sf::RenderWindow(sf::VideoMode(800, 600), "Game",sf::Style::None));
 	
 
@@ -66,11 +82,15 @@ void EventHandler::Run(std::string name, std::vector<std::string> strArgs)
 	Title.setCharacterSize(24);
 	Title.setStyle(sf::Text::Bold);
 	Title.setFillColor(sf::Color::Black);
-	Title.setPosition(300,0);
+	Title.setOutlineColor(sf::Color::White);
+	Title.setPosition(100,0);
+	Title.setOutlineThickness(1);
 
 	Body.setFillColor(sf::Color::Black);
+	Body.setOutlineColor(sf::Color::White);
 	Body.setPosition(10,400);
-	Body.setCharacterSize(12);
+	Body.setCharacterSize(14);
+	Body.setOutlineThickness(1);
 
 	Button* Exit = new Button(sf::Vector2i(0,0),"Exit");
 	
@@ -125,7 +145,7 @@ System* Chosensystem(Faction* fac,std::vector<System*> systems)
 		if (systems.at(i)->OwningFaction == fac)
 		{
 			valid.push_back(systems.at(i));
-			std::cout << "^^^^^^^^^";
+			
 		}
 	}
 	if ((valid.size() - 1) != 0)
@@ -148,8 +168,22 @@ int GetRandomPopulatedPlanetIdx(System* sys)
 		}
 	}
 
-
-	return tP.at(rand() % (tP.size()-1));
+	if (tP.size()-1)
+	{
+		try
+		{
+			return tP.at(rand() % (tP.size() - 1));
+		}
+		catch (const std::exception&)
+		{
+			return 0;
+		}
+		
+	}
+	else
+	{
+		return 0; //make this -1 and make it so that a return of -1 will kill the function
+	}
 
 }
 
@@ -186,7 +220,7 @@ EventOutput EventHandler::RandomGenericEvent(Faction* PlayerFaction, std::vector
 			break;
 		}
 		idx++;
-		std::cout << type << std::endl;
+		
 	}
 
 
@@ -203,7 +237,7 @@ EventOutput EventHandler::RandomGenericEvent(Faction* PlayerFaction, std::vector
 
 		//Do the thing
 
-		tSys->Planets.at(planetIdx)->Population -= randomT * tSys->Planets.at(planetIdx)->Population * 0.01;
+		tSys->Planets.at(planetIdx)->Population -= randomT * tSys->Planets.at(planetIdx)->Population * 0.001;
 
 	}
 
@@ -214,3 +248,17 @@ EventOutput EventHandler::RandomGenericEvent(Faction* PlayerFaction, std::vector
 
 	return out;
 }
+
+void EventHandler::TechAdvanceNotification(std::string type, int newLevel)
+{
+	std::vector<std::string> strArgs;
+	strArgs.push_back(type);
+	strArgs.push_back(std::to_string(newLevel));
+
+	EventHandler EventWindow;
+	EventWindow.Run("TechAdvance", strArgs);
+}
+
+//This system works better than I'd thought as it doesn't carry clicks over.
+//TODO make the text format correctly
+//TODO make the text stand out on the background better (outline)

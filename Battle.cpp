@@ -2,7 +2,90 @@
 
 
 
-sf::Vector2f GetDirection(sf::Vector2f Origin, sf::Vector2f Target)
+float GetDistance(sf::Vector2f Origin, sf::Vector2f Target)
+{
+	float x = Target.x - Origin.x;
+	float y = Target.y - Origin.y;
+	return sqrt(pow(x,2)+pow(y,2));
+
+}
+
+void BattleShip::SetLookAtRotation()
+{
+	float x = Target->Location.x - Location.x;
+	float y = Target->Location.y - Location.y;
+	
+	Direction = atan(x/y);
+	
+}
+
+void BattleShip::MoveShip()
+{
+	if (MovementMode == "attack")
+	{
+		
+		float x = Target->GetCentreLocation().x - Location.x;
+		float y = Target->GetCentreLocation().y - Location.y;
+		float length = sqrt(x * x + y * y);
+		float xM = (x / length) * Speed * 0.01;
+		float yM = (y / length) * Speed * 0.01;
+
+		Location += sf::Vector2f(xM, yM);
+		
+		if (GetDistance(Location,Target->GetCentreLocation())<GetLowestRangedWeapon()->Range)
+		{
+			//run away
+			MovementMode = "back";
+		}
+		if (Location.x < 0 || Location.x>1920 || Location.y > 1080 || Location.y < 0)
+		{
+			MovementMode = "random";
+			MovementTarget = sf::Vector2f(rand() % 1920, rand() % 1080);
+		}
+	}
+	if (MovementMode == "back")
+	{
+		
+		float x = Target->GetCentreLocation().x - Location.x;
+		float y = Target->GetCentreLocation().y - Location.y;
+		float length = sqrt(x * x + y * y);
+		float xM = (x / length) * Speed * 0.01;
+		float yM = (y / length) * Speed * 0.01;
+
+		Location -= sf::Vector2f(xM, yM); //inverse to attack
+		if (GetDistance(Location, Target->GetCentreLocation()) > GetLongestRangedWeapon()->Range)
+		{
+			
+			MovementMode = "attack";
+		}
+		if (GetCentreLocation().x <0 || GetCentreLocation().x>1920 || GetCentreLocation().y>1080 || GetCentreLocation().y<0)
+		{
+
+			MovementMode = "random";
+			MovementTarget = sf::Vector2f(rand() % 1920, rand() % 1080);
+			
+		}
+	}
+	if (MovementMode == "random")
+	{
+		float x = MovementTarget.x - Location.x;
+		float y = MovementTarget.y - Location.y;
+		float length = sqrt(x * x + y * y);
+		float xM = (x / length) * Speed * 0.01;
+		float yM = (y / length) * Speed * 0.01;
+
+		Location += sf::Vector2f(xM, yM);
+		if (GetDistance(Location, MovementTarget) < 10)
+		{
+			MovementMode = "attack";
+		}
+		
+	}
+
+	
+}
+
+sf::Vector2f BattleShip::GetDirection(sf::Vector2f Origin, sf::Vector2f Target)
 {
 	float x = Target.x - Origin.x;
 	float y = Target.y - Origin.y;
@@ -10,190 +93,230 @@ sf::Vector2f GetDirection(sf::Vector2f Origin, sf::Vector2f Target)
 	return sf::Vector2f(x/l,y/l);
 }
 
-float GetDistance(sf::Vector2f Origin, sf::Vector2f Target)
-{
-	float x = Target.x - Origin.x;
-	float y = Target.y - Origin.y;
-	return sqrt(x+y);
 
-}
 
 
 void FireKinetic(BattleShip* Parent, BattleShip* Target)
 {
-	Parent->WeaponElements.push_back(new KineticType(Parent->Kinetic));
+	Parent->WeaponElements.push_back(new KineticType(static_cast<KineticType*>(Parent->WeaponElements.at(1))));
 }
 
-
-
-void BattleShip::EventTick(std::vector<BattleShip*> Enemyships)
+Weapon* BattleShip::GetLowestRangedWeapon()
 {
-	//Get nearest for now we'll just use the first element
-	sf::Vector2f Delta = GetDirection(Location, Enemyships.at(0)->Location);
-	float Distance = GetDistance(Location, Enemyships.at(0)->Location);
+	Weapon* lowest = nullptr;
+	int range = MAXINT;
+	for (size_t i = 0; i < WeaponElements.size(); i++)
+	{
+		if (WeaponElements.at(i)->Range < range)
+		{
+			lowest = WeaponElements.at(i);
+			range = WeaponElements.at(i)->Range;
+		}
+	}
+	return lowest;
 
-	Delta.x = Delta.x * 0.005 * Speed;
-	Delta.y = Delta.y * 0.005 * Speed;
-	Location += Delta;
+}
+
+Weapon* BattleShip::GetLongestRangedWeapon()
+{
+	Weapon* lognest = nullptr;
+	int range =0;
+	for (size_t i = 0; i < WeaponElements.size(); i++)
+	{
+		if (WeaponElements.at(i)->Range > range)
+		{
+			lognest = WeaponElements.at(i);
+			range = WeaponElements.at(i)->Range;
+		}
+	}
+	return lognest;
+
+}
+
+void BattleShipEventTick(std::vector<BattleShip*> Enemyships, std::vector<TorpedoType*>* FreeTorpedos, BattleShip* owner, std::vector<KineticType*>* FreeKinetics, std::vector<BeamType*>* FreeBeams, BattleSounds* Sounds)
+{
+	
+
+
+	//first of make sure that there is a target
+	if (owner->Target == nullptr)
+	{
+		owner->Target = Enemyships.at(rand() % Enemyships.size());
+		
+	}
+	
+	owner->MoveShip();
+	
+
+	//Get nearest for now we'll just use the first element
+	sf::Vector2f Delta = BattleShip::GetDirection(owner->Location, owner->Target->Location);
+	float Distance = GetDistance(owner->Location, owner->Target->Location);
+	
+
+
+	owner->Sprite.setRotation(owner->Direction);
+	owner->Sprite.setPosition(owner->Location);
+
 
 	//Weapon Firing
 
 	//KineticFiring
-	if (Distance<Kinetic->Range && KineticTickDelay<0)
+	if (Distance< owner->WeaponElements.at(1)->Range && owner->KineticTickDelay<0)
 	{
-		KineticTickDelay = 100;
+		owner->KineticTickDelay = 4500 + rand() % 1000;
+		FreeKinetics->push_back(new KineticType(static_cast<KineticType*>(owner->WeaponElements.at(1))));
+		FreeKinetics->back()->Location = owner->GetCentreLocation();
+		FreeKinetics->back()->Origin = owner;
+		float x = owner->Target->GetCentreLocation().x - FreeKinetics->back()->Location.x;
+		float y = owner->Target->GetCentreLocation().y - FreeKinetics->back()->Location.y;
+		float length = sqrt(x * x + y * y);
+		FreeKinetics->back()->Vector = sf::Vector2f(x/length,y/length);
+		FreeKinetics->back()->line->color == sf::Color(175,175,190);
+
+		owner->Railgun->play();
+
+	}
+	if (Distance < owner->WeaponElements.at(0)->Range && owner->TorpedoTickDelay < 0)
+	{
+		owner->TorpedoTickDelay = 9500 + rand() % 1000;
+		FreeTorpedos->push_back(new TorpedoType(static_cast<TorpedoType*>(owner->WeaponElements.at(0))));
+		FreeTorpedos->back()->Location = owner->GetCentreLocation();
+		FreeTorpedos->back()->Target = owner->Target;
+		FreeTorpedos->back()->Circle = new sf::CircleShape(3);
+		FreeTorpedos->back()->Circle->setPosition(owner->Location);
+
+	}
+	if (Distance < owner->WeaponElements.at(2)->Range && owner->BeamTickDelay < 0)
+	{
+		owner->BeamTickDelay = 3500 +rand() % 1000;
+		FreeBeams->push_back(new BeamType(static_cast<BeamType*>(owner->WeaponElements.at(2))));
+		FreeBeams->back()->Location = owner->GetCentreLocation();
+		FreeBeams->back()->Target = owner->Target;
+		FreeBeams->back()->Origin = owner;
+		FreeBeams->back()->line[0].color = sf::Color(255,0,0);
+		FreeBeams->back()->line[1].color = sf::Color(230,100,100);
+		owner->Laser->play();
+		std::cout << Distance << std::endl;
 
 	}
 	
 
 
 	//Set the position of the sprite
-	Sprite.setPosition(Location);
+	//Sprite.setPosition(Location);
 
 	//Decrease weapon ticks
-	KineticTickDelay--;
-	BeamTickDelay--;
-	TorpedoTickDelay--;
+	owner->KineticTickDelay--;
+	owner->BeamTickDelay--;
+	owner->TorpedoTickDelay--;
+
+	//health indicators
+	owner->HullInd->setPosition(owner->Location+sf::Vector2f(20,20));
+	if (owner->Parent->Shields > 0)
+	{
+		owner->ShieldInd->setPosition(owner->Location + sf::Vector2f(20, 40));
+		owner->ShieldInd->setRadius(5 * owner->ShieldStrength / owner->Parent->Shields);
+	}
+
+	owner->HullInd->setRadius(5 * owner->HullStrength/owner->Parent->Hull);
+
+
+
+	
 }
 
 
-
-
-
-std::vector<sf::Texture*> GetShipTypes(std::vector<ShipType*> input, std::vector<ShipType*> input2)
+bool TorpedoType::EventTick()
 {
-	std::vector<ShipType*> out;
-	for (size_t i = 0; i < input.size(); i++)
+	float x = Target->GetCentreLocation().x - Location.x;
+	float y = Target->GetCentreLocation().y - Location.y;
+	float length = sqrt(x * x + y * y);
+	float xM = (x / length) * Speed * 0.01;
+	float yM = (y / length) * Speed * 0.01;
+	Location += sf::Vector2f(xM, yM);
+	Circle->setPosition(Location);
+	if (GetDistance(Target->GetCentreLocation(),Location)<15)
 	{
-		if (std::find(out.begin(), out.end(), input.at(i)) != out.end())
+		//perform an attack
+		if (Target->ShieldStrength>0)
 		{
-			out.push_back(input.at(i));
+			Target->ShieldStrength -= Damage;
+			if (Target->ShieldStrength < 0)
+			{
+				Target->HullStrength += Target->ShieldStrength;
+			}
+		}
+		else
+		{
+			Target->HullStrength -= Damage;
+		}
+		delete this;
+		return true;
+	}
+
+	
+
+	return false;
+
+}
+
+bool KineticType::EventTick(std::vector<BattleShip*>* ships1, std::vector<BattleShip*>* ships2)
+{
+
+	float xM = Vector.x * Speed * 0.01;
+	float yM = Vector.y * Speed * 0.01;
+	Location += sf::Vector2f(xM, yM);
+	line[0].position = Location;
+	line[1].position = Location - sf::Vector2f(Vector.x*3, (Vector.y * 5));
+
+	for (size_t i = 0; i < ships1->size(); i++)
+	{
+		if (GetDistance(Location,ships1->at(i)->GetCentreLocation())<3 && ships1->at(i) != Origin)
+		{
+			if (ships1->at(i)->ShieldStrength > 0)
+			{
+				ships1->at(i)->ShieldStrength -= Damage;
+			}
+			else
+			{
+				ships1->at(i)->HullStrength -= Damage;
+			}
+			return true;
 		}
 	}
-	for (size_t i = 0; i < input2.size(); i++)
+
+	for (size_t i = 0; i < ships2->size(); i++)
 	{
-		if (std::find(out.begin(), out.end(), input2.at(i)) != out.end())
+		if (GetDistance(Location, ships2->at(i)->GetCentreLocation()) < 3 && ships2->at(i) != Origin)
 		{
-			out.push_back(input2.at(i));
+			if (ships2->at(i)->ShieldStrength > 0)
+			{
+				ships2->at(i)->ShieldStrength -= Damage;
+			}
+			else
+			{
+				ships2->at(i)->HullStrength -= Damage;
+			}
+			return true;
 		}
 	}
-	//^This isn't working right now
-	//So just add the first thing automatically
-	out.push_back(input.at(0));
 
+	return (Location.x < 0 || Location.x>1920 || Location.y > 1080 || Location.y < 0);
 
-
-
-	sf::Image* TempImage;
-	std::vector<sf::Texture*> output;
-	for (size_t i = 0; i < out.size(); i++)
-	{
-		TempImage = new sf::Image;
-		TempImage->loadFromFile("C:/Users/User/Documents/2DSpaceGame/Textures/Battle/" + out.at(i)->Name+".png");
-
-		output.push_back(new sf::Texture);
-		output.back()->loadFromImage(*TempImage);
-	}
-
-
-	return output;
 }
 
 
-
-
-
-BattleReturn Battle(Faction* Faction1, Faction* Faction2, std::vector<ShipType*> Faction1Ships, std::vector<ShipType*> Faction2Ships)
+std::vector<ShipInstance*> BattleShip::ToInstances(Faction* fac, std::vector<BattleShip*> AllShips, std::vector<ShipInstance*> Original)
 {
-	std::vector<sf::Texture*> Textures;
-	
-	Textures = GetShipTypes(Faction1Ships,Faction2Ships);
-	std::vector<BattleShip*> Ships1;
-	std::vector<BattleShip*> Ships2;
-	for (size_t i = 0; i < Faction1Ships.size(); i++)
+	std::vector<ShipInstance*> out;
+	for (size_t i = 0; i < Original.size(); i++)
 	{
-		Ships1.push_back(new BattleShip(Faction1Ships.at(i), Textures,true));
-		Ships1.back()->Location = sf::Vector2f(130,10+i*100);
-	}
-	for (size_t i = 0; i < Faction2Ships.size(); i++)
-	{
-		Ships2.push_back(new BattleShip(Faction2Ships.at(i), Textures,false));
-		Ships2.back()->Location = sf::Vector2f(1750, 10 + i * 100);
-	}
-
-	sf::RenderWindow window(sf::VideoMode(1920, 1080), "Battle", sf::Style::Fullscreen);
-
-	
-	BattleReturn output;
-
-	//Summer school stock thing delte later
-	/*
-	std::ifstream file("C:/Users/User/Documents/2DSpaceGame/Assets/StockData.csv");
-	std::string data;
-	file >> data;
-	std::vector<std::string> temp;
-	temp = System::SplitString(data, ',');
-
-	sf::Vertex line[] =
-	{
-		sf::Vertex(sf::Vector2f(10, 10)),
-		sf::Vertex(sf::Vector2f(150, 150))
-	};
-	std::vector<float> points;
-	for (size_t i = 0; i < temp.size(); i++)
-	{
-		points.push_back((std::stof(temp.at(i))-138)*100);
-	}
-	*/
-
-	while (window.isOpen())
-	{
-		// check all the window's events that were triggered since the last iteration of the loop
-		sf::Event event;
-		while (window.pollEvent(event))
+		if (AllShips.at(i))
 		{
-			// "close requested" event: we close the window
-			if (event.type == sf::Event::Closed)
-			{
-				window.close();
-			}
-
-			if (event.type == sf::Event::KeyPressed)
-			{
-				if (event.key.code == sf::Keyboard::Escape)
-				{
-					window.close();
-				}
-			}
+			out.push_back(Original.at(i));
 		}
-		window.clear();
-		
-		/*
-		for (size_t i = 0; i < points.size()-1; i++)
-		{
-			line[0].position = sf::Vector2f(i*1920/points.size(),points.at(i));
-			line[1].position = sf::Vector2f((i+1) * 1920 / points.size(), points.at(i+1));
-
-			window.draw(line, 2, sf::Lines);
-		}
-		*/
-		for ( size_t i = 0;  i < Ships1.size();  i++)
-		{
-			window.draw(Ships1.at(i)->Sprite);
-			Ships1.at(i)->EventTick(Ships2);
-		}
-
-		for (size_t i = 0; i < Ships2.size(); i++)
-		{
-			
-			window.draw(Ships2.at(i)->Sprite);
-			Ships2.at(i)->EventTick(Ships1);
-		}
-
-
-		window.display();
 	}
 
 
-	return output;
+	return out;
 }

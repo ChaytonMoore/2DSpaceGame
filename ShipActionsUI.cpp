@@ -1,8 +1,8 @@
 #include "ShipActionsUI.h"
+#include "FactionData.h"
 
 
-
-void ShipActionsUI::RenderShipActions(sf::RenderWindow* window,FleetStruct* CurrentFleet, System* CurrentSystem, Planet* CurrentPlanet, SelectEnum* select)
+void ShipActionsUI::RenderShipActions(sf::RenderWindow* window,FleetStruct* CurrentFleet, System* CurrentSystem, Planet* CurrentPlanet, SelectEnum* select, FactionData* PlayerFaction)
 {
 	ShipInstance* CurrentShip = CurrentFleet->Ships.at(0);
 	//Only draw the things that the ship can actually do
@@ -19,7 +19,7 @@ void ShipActionsUI::RenderShipActions(sf::RenderWindow* window,FleetStruct* Curr
 		}
 	}
 
-	CanActivity = CanActivity && CurrentPlanet->Population < 1;
+	CanActivity = CanActivity && (CurrentPlanet->Population < 1 || (CurrentSystem->OwningFaction == PlayerFaction->OwningFaction && CurrentPlanet->Population < 100000));
 	
 	//^Checks if there is a colonisable planet in the system
 	if (CanActivity)
@@ -40,6 +40,7 @@ void ShipActionsUI::RenderShipActions(sf::RenderWindow* window,FleetStruct* Curr
 				}
 			}
 			CurrentSystem->OwningFaction = CurrentShip->OwningFaction;
+			PlayerFaction->OwnedSystems.push_back(CurrentSystem);
 			delete CurrentFleet;
 			delete CurrentShip;
 			*select = SelectEnum::Basic;
@@ -67,9 +68,42 @@ void ShipActionsUI::RenderShipActions(sf::RenderWindow* window,FleetStruct* Curr
 	{
 		Terraform->Render(window);
 		*select = SelectEnum::Basic;
+		if (Terraform->isClicked(sf::Mouse::getPosition()) && Terraform->Active)
+		{
+			if (CurrentShip->Activity == ShipActivity::Terraform)
+			{
+				CurrentShip->Activity = ShipActivity::Standard;
+				CurrentShip->TerraformingPlanet = nullptr;
+				Terraform->rect.setOutlineColor(sf::Color(74, 89, 57));
+			}
+			else 
+			{
+				CurrentShip->Activity = ShipActivity::Terraform;
+				CurrentShip->TerraformingPlanet = CurrentPlanet;
+				Terraform->rect.setOutlineColor(sf::Color::Red);
+			}
+			Terraform->Active = false;
+			
+		}
+		else if(Terraform->isClicked(sf::Mouse::getPosition()))
+		{
+			Terraform->Active = true;
+		}
 	}
 	
 	//TODO can only do either if the population is 0 of atleast one valid planet
 	//TODO right now it appears that sputnik can colonise that shouldn't be
+
+
+	//auto transport
+	CanActivity = false;
+	if (CurrentShip->Type->Capacity>0)
+	{
+		AutoTransport->Render(window);
+		if (AutoTransport->isClicked(sf::Mouse::getPosition()))
+		{
+			CurrentShip->Activity = ShipActivity::Transport;
+		}
+	}
 
 }

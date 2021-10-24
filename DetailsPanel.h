@@ -17,11 +17,18 @@ public:
 	std::string CurrentObject;
 
 	void RenderPanel(sf::RenderWindow* window);
-	void Reload();
+	void Reload(ShipType* ship); //nothing wrong with having the ship ref being nullptr
 
 	sf::Sprite MainImage;
 	sf::Image ImageRef;
 	sf::Texture TextureRef;
+	sf::Text Name;
+	sf::Text Desc;
+	sf::Text Stats; //This has to be formated and generated manually
+	sf::Font TitleFont;
+	sf::Font BodyFont;
+	sf::RectangleShape Background;
+	sf::RectangleShape ImgOutline; //only exists to be an outline for an image
 
 };
 
